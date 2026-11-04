@@ -344,6 +344,7 @@ private fun StockScreen(
                     }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Blue)) { Text("Save stock movement") }
                 }
             }
+        }
         item {
             Text("Recent stock movement history", color = Navy, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             if (movements.isEmpty()) Text("Abhi koi movement record nahi hai.", color = Color.Gray, fontSize = 12.sp)
