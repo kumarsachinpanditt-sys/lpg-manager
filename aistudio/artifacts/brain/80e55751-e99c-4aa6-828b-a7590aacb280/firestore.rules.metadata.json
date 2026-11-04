@@ -1,0 +1,5 @@
+{
+  "summary": "Hardened Firestore Security Rules with anti-privilege escalation guards, email_verified checks for admin, godowns registry, and office_stock counter support.",
+  "updatedAt": "2026-11-02T21:44:50.280977284Z",
+  "userFacing": true
+}

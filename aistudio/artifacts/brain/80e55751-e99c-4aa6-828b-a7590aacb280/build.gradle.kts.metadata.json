@@ -1,0 +1,5 @@
+{
+  "summary": "Complete Android build.gradle.kts Gradle Kotlin DSL build script for the LPG Manager native application configured with:\n- Android SDK 35 and minimum SDK 26 (Android 8.0 Oreo)\n- Java 17 / JVM 17 compilation target\n- Jetpack Compose 2024.12 BoM and Material 3 design libraries\n- Google Firebase BoM 33.7.0, Firebase Authentication, and Cloud Firestore\n- Kotlinx Coroutines Android and Play Services coroutines\n- Release optimization and ProGuard configurations",
+  "updatedAt": "2026-11-02T21:01:32.172846184Z",
+  "userFacing": true
+}

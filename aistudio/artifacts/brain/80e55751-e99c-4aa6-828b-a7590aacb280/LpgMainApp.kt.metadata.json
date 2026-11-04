@@ -1,0 +1,5 @@
+{
+  "summary": "Complete Android Jetpack Compose source code file (LpgMainApp.kt) for LPG Manager featuring:\n- High-contrast Material 3 dark navy UI with zero non-English strings\n- Role-based views for Admin and Delivery Staff\n- Stock tracking for 14.2 KG Domestic, 19 KG Commercial, and 5 KG Chhotu cylinders (Full, Empty, and Defective)\n- End-of-Day (EOD) Staff Cash and Empty Tally Reconciliation UI\n- Quarantined Defective Cylinder Bay for bottling plant warranty exchanges\n- 19 KG Commercial Customer Credit & Rolling Empty Ledger\n- One-Click EOD Summary Report and WhatsApp Receipt generation hooks",
+  "updatedAt": "2026-11-02T21:01:15.889864875Z",
+  "userFacing": true
+}

@@ -1,0 +1,157 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all for any undefined collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions for authentication and security validation
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.]+$');
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Hardened Admin check: Enforces verified email for Kumarsachinpandit@gmail.com
+    // or existing verified Admin document in admins or users collection.
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'Kumarsachinpandit@gmail.com' && request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'ADMIN')
+      );
+    }
+
+    function isStaff() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().role == 'STAFF';
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Connectivity test probes
+    match /test/{docId} {
+      allow get: if true;
+    }
+    match /_connection_test/{docId} {
+      allow get: if true;
+    }
+
+    // Dynamic LPG Cylinder Pricing Master (14.2 KG, 19 KG, 5 KG)
+    match /pricing/{cylinderType} {
+      allow get: if isValidId(cylinderType);
+      allow list: if true;
+      allow write: if isAdmin() && isValidId(cylinderType);
+    }
+
+    // Master Godown Facilities Registry
+    match /godowns/{godownId} {
+      allow get: if isSignedIn() && isValidId(godownId);
+      allow list: if isSignedIn();
+      allow write: if isAdmin() && isValidId(godownId);
+    }
+
+    // Godown Master Inventory Stock (Full, Empty, Defective counts)
+    match /godown_stock/{cylinderType} {
+      allow get: if isValidId(cylinderType);
+      allow list: if true;
+      allow write: if isSignedIn() && isValidId(cylinderType) && (isAdmin() || isStaff());
+    }
+
+    // Office Counter Showroom Stock (Walk-in Consumers & Empties Return)
+    match /office_stock/{cylinderType} {
+      allow get: if isValidId(cylinderType);
+      allow list: if true;
+      allow write: if isSignedIn() && isValidId(cylinderType) && (isAdmin() || isStaff());
+    }
+
+    // Staff Vehicle Assigned Stock
+    match /staff_stock/{staffId} {
+      allow get: if isSignedIn() && isValidId(staffId) && (isAdmin() || request.auth.uid == staffId);
+      allow list: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(staffId) && (isAdmin() || request.auth.uid == staffId);
+    }
+
+    // Users and Staff Profiles (Strict anti-privilege escalation)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId);
+      allow list: if isSignedIn();
+      // On create: non-admins cannot assign themselves role ADMIN
+      allow create: if isSignedIn() && isValidId(userId) && (
+        isAdmin() ||
+        (isOwner(userId) && request.resource.data.role != 'ADMIN')
+      );
+      // On update: ordinary users cannot change their own role or elevate privileges
+      allow update: if isSignedIn() && isValidId(userId) && (
+        isAdmin() ||
+        (isOwner(userId) && request.resource.data.role == resource.data.role)
+      );
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    // Admin Credentials & Superuser Registry
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && isValidId(adminId);
+      allow list: if isAdmin();
+      allow write: if isAdmin() && isValidId(adminId);
+    }
+
+    // Domestic & 19 KG Commercial Customer Directory
+    match /customers/{customerId} {
+      allow get: if isSignedIn() && isValidId(customerId);
+      allow list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(customerId) && (isAdmin() || isStaff());
+      allow delete: if isAdmin() && isValidId(customerId);
+    }
+
+    // Immutable Stock & Financial Transaction Ledger
+    match /transactions/{txnId} {
+      allow get: if isSignedIn() && isValidId(txnId);
+      allow list: if isSignedIn();
+      // Users can only record transactions stamped with their own UID unless Admin
+      allow create: if isSignedIn() && isValidId(txnId) && (
+        isAdmin() ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update: if isAdmin() && isValidId(txnId);
+      allow delete: if false; // Audit logs are immutable and cannot be deleted
+    }
+
+    // Quarantined Defective / Leaking Cylinders
+    match /defectives/{defectiveId} {
+      allow get: if isSignedIn() && isValidId(defectiveId);
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(defectiveId) && (isAdmin() || isStaff());
+      allow update: if isAdmin() && isValidId(defectiveId);
+      allow delete: if false; // Permanent for statutory bottling plant warranty returns
+    }
+
+    // End-of-Day (EOD) Staff Cash & Empty Reconciliation Records
+    match /eod_settlements/{settlementId} {
+      allow get: if isSignedIn() && isValidId(settlementId);
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(settlementId) && (isAdmin() || isStaff());
+      allow update: if isAdmin() && isValidId(settlementId);
+      allow delete: if false;
+    }
+
+    // Operational Expenses
+    match /expenses/{expenseId} {
+      allow get: if isSignedIn() && isValidId(expenseId) && isAdmin();
+      allow list: if isSignedIn() && isAdmin();
+      allow create, update: if isSignedIn() && isValidId(expenseId) && isAdmin();
+      allow delete: if isAdmin() && isValidId(expenseId);
+    }
+  }
+}
