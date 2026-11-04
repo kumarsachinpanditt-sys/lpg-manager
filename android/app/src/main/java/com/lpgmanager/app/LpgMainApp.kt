@@ -1,12 +1,8 @@
 package com.lpgmanager.app
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -14,259 +10,172 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.util.UUID
 
-// LPG Manager Android Native Jetpack Compose App
-// Synchronized with Web Firestore Database Schema
+private val Navy = Color(0xFF102A56)
+private val Blue = Color(0xFF1769AA)
+private val Yellow = Color(0xFFFFC928)
+private val Page = Color(0xFFF3F6FA)
+private val Ink = Color(0xFF172B4D)
+private val Green = Color(0xFF16865B)
+private val Red = Color(0xFFB83232)
+private val CylinderTypes = listOf("14.2 KG Domestic", "5 KG Small", "19 KG Commercial")
 
-val BackgroundDark = Color(0xFF020617)
-val CardDark = Color(0xFF0F172A)
-val CardBorder = Color(0xFF1E293B)
-val TextPrimary = Color(0xFFFFFFFF)
-val TextSecondary = Color(0xFF94A3B8)
-val AccentOrange = Color(0xFFF97316)
-val AccentEmerald = Color(0xFF10B981)
-val AccentCyan = Color(0xFF06B6D4)
-val AccentRose = Color(0xFFF43F5E)
-
-enum class LpgScreen(val title: String, val icon: ImageVector) {
-    DASHBOARD("Dashboard", Icons.Default.Dashboard),
-    GODOWN("Godown", Icons.Default.Warehouse),
-    DELIVERY("Delivery", Icons.Default.LocalShipping),
-    CUSTOMERS("Ledger", Icons.Default.People),
-    DEFECTIVES("Defectives", Icons.Default.Warning),
-    EOD("EOD Summary", Icons.Default.ReceiptLong)
-}
-
-data class StockSummary(
-    val godownFilled14: Int = 420,
-    val godownEmpty14: Int = 110,
-    val godownFilled19: Int = 115,
-    val godownEmpty19: Int = 42,
-    val officeFilled14: Int = 45,
-    val officeEmpty14: Int = 38,
-    val vanFilled14: Int = 86,
-    val vanEmpty14: Int = 18,
-    val defective14: Int = 3,
-    val defective19: Int = 1
-)
-
-data class CustomerItem(
-    val id: String,
-    val name: String,
-    val phone: String,
+private data class StockRow(
     val type: String,
-    val pendingEmpties19: Int,
-    val outstandingBalance: Double
+    val godownFull: Int,
+    val godownEmpty: Int,
+    val vanFull: Int,
+    val vanEmpty: Int,
+    val defective: Int
 )
+
+private enum class PageTab(val label: String) {
+    HOME("Home"), STOCK("Stock"), CUSTOMERS("Customers"), DELIVERY("Delivery"), REPORTS("Reports")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LpgAppRoot() {
-    var currentScreen by remember { mutableStateOf(LpgScreen.DASHBOARD) }
-    var stockState by remember { mutableStateOf(StockSummary()) }
-    var userRole by remember { mutableStateOf("ADMIN") } // ADMIN or STAFF
+    val context = LocalContext.current
+    val store = remember { LpgPersistentStore(context) }
+    var isLoggedIn by remember { mutableStateOf(store.readString("login_phone").isNotBlank()) }
+    var tab by remember { mutableStateOf(PageTab.HOME) }
+    var phone by remember { mutableStateOf("") }
+    var pin by remember { mutableStateOf("") }
+    var loginError by remember { mutableStateOf("") }
+    var customers by remember { mutableStateOf(store.customers()) }
+    var deliveries by remember { mutableStateOf(store.deliveries()) }
+    var stockVersion by remember { mutableIntStateOf(0) }
+    var notice by remember { mutableStateOf("") }
 
-    Scaffold(
-        containerColor = BackgroundDark,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(AccentOrange),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.LocalFireDepartment,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "LPG MANAGER",
-                                color = TextPrimary,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Enterprise Godown & Delivery",
-                                color = TextSecondary,
-                                fontSize = 10.sp
+    fun stock(type: String, location: String): Int {
+        stockVersion
+        return store.readInt("stock_${type}_${location}", 0)
+    }
+    fun setStock(type: String, location: String, value: Int) {
+        store.writeInt("stock_${type}_${location}", value.coerceAtLeast(0))
+        stockVersion++
+    }
+    fun row(type: String) = StockRow(type, stock(type, "gf"), stock(type, "ge"),
+        stock(type, "vf"), stock(type, "ve"), stock(type, "def"))
+
+    MaterialTheme(colorScheme = lightColorScheme(primary = Blue, secondary = Yellow, background = Page)) {
+        if (!isLoggedIn) {
+            LoginScreen(
+                phone = phone, onPhone = { phone = it.filter(Char::isDigit).take(10) },
+                pin = pin, onPin = { pin = it.filter(Char::isDigit).take(4) },
+                error = loginError,
+                onContinue = {
+                    val savedPhone = store.readString("login_phone")
+                    val savedPin = store.readString("login_pin")
+                    if (phone.length != 10 || pin.length != 4) {
+                        loginError = "Enter a 10-digit mobile number and 4-digit PIN."
+                    } else if (savedPhone.isBlank()) {
+                        store.writeString("login_phone", phone)
+                        store.writeString("login_pin", pin)
+                        isLoggedIn = true
+                    } else if (phone == savedPhone && pin == savedPin) {
+                        isLoggedIn = true
+                    } else {
+                        loginError = "Mobile number or PIN is incorrect."
+                    }
+                }
+            )
+        } else {
+            Scaffold(
+                containerColor = Page,
+                topBar = {
+                    TopAppBar(
+                        title = {
+                            Column {
+                                Text("LPG MANAGER", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                Text("Bharat Gas Agency", color = Color(0xFFD8E7F7), fontSize = 11.sp)
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = {
+                                isLoggedIn = false
+                                phone = ""
+                                pin = ""
+                            }) { Icon(Icons.Default.Logout, contentDescription = "Logout", tint = Color.White) }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Navy)
+                    )
+                },
+                bottomBar = {
+                    NavigationBar(containerColor = Color.White) {
+                        PageTab.values().forEach { item ->
+                            NavigationBarItem(
+                                selected = tab == item,
+                                onClick = { tab = item; notice = "" },
+                                icon = {
+                                    Icon(when (item) {
+                                        PageTab.HOME -> Icons.Default.Dashboard
+                                        PageTab.STOCK -> Icons.Default.Inventory
+                                        PageTab.CUSTOMERS -> Icons.Default.People
+                                        PageTab.DELIVERY -> Icons.Default.LocalShipping
+                                        PageTab.REPORTS -> Icons.Default.Assessment
+                                    }, contentDescription = item.label)
+                                },
+                                label = { Text(item.label, fontSize = 10.sp) },
+                                colors = NavigationBarItemDefaults.colors(selectedIconColor = Blue, indicatorColor = Yellow.copy(alpha = .35f))
                             )
                         }
                     }
-                },
-                actions = {
-                    AssistChip(
-                        onClick = {
-                            userRole = if (userRole == "ADMIN") "STAFF" else "ADMIN"
-                        },
-                        label = {
-                            Text(
-                                text = userRole,
-                                color = if (userRole == "ADMIN") AccentOrange else AccentCyan,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = CardDark
-                        )
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = CardDark
-                )
-            )
-        },
-        bottomBar = {
-            NavigationBar(
-                containerColor = CardDark,
-                tonalElevation = 8.dp
-            ) {
-                LpgScreen.values().forEach { screen ->
-                    val selected = currentScreen == screen
-                    NavigationBarItem(
-                        selected = selected,
-                        onClick = { currentScreen = screen },
-                        icon = {
-                            Icon(
-                                imageVector = screen.icon,
-                                contentDescription = screen.title,
-                                tint = if (selected) AccentOrange else TextSecondary
-                            )
-                        },
-                        label = {
-                            Text(
-                                text = screen.title,
-                                color = if (selected) AccentOrange else TextSecondary,
-                                fontSize = 10.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                            )
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            indicatorColor = AccentOrange.copy(alpha = 0.15f)
-                        )
-                    )
                 }
-            }
-        }
-    ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .background(BackgroundDark)
-        ) {
-            when (currentScreen) {
-                LpgScreen.DASHBOARD -> DashboardScreen(stockState)
-                LpgScreen.GODOWN -> GodownScreen(stockState) { stockState = it }
-                LpgScreen.DELIVERY -> StaffDeliveryScreen(stockState) { stockState = it }
-                LpgScreen.CUSTOMERS -> CustomerLedgerScreen()
-                LpgScreen.DEFECTIVES -> DefectiveScreen(stockState) { stockState = it }
-                LpgScreen.EOD -> EodSettlementScreen(stockState)
-            }
-        }
-    }
-}
-
-@Composable
-fun DashboardScreen(stock: StockSummary) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item {
-            Text(
-                text = "Operational Overview",
-                color = TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Real-time stock across main godown, office counter, and delivery vans",
-                color = TextSecondary,
-                fontSize = 12.sp
-            )
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                StatCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Godown Filled 14.2KG",
-                    value = "${stock.godownFilled14}",
-                    subtitle = "Available for Loading",
-                    badgeColor = AccentEmerald
-                )
-                StatCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Godown Empty 14.2KG",
-                    value = "${stock.godownEmpty14}",
-                    subtitle = "Ready for Plant Inward",
-                    badgeColor = AccentCyan
-                )
-            }
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                StatCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Commercial 19KG",
-                    value = "${stock.godownFilled19} Full",
-                    subtitle = "${stock.godownEmpty19} Empties in stock",
-                    badgeColor = AccentOrange
-                )
-                StatCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Office Counter",
-                    value = "${stock.officeFilled14} Full",
-                    subtitle = "${stock.officeEmpty14} Empties at counter",
-                    badgeColor = AccentCyan
-                )
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = CardDark)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Delivery Vehicle Status",
-                        color = TextPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Vans on route holding ${stock.vanFilled14} filled cylinders, ${stock.vanEmpty14} collected empties.",
-                        color = TextSecondary,
-                        fontSize = 12.sp
-                    )
+            ) { padding ->
+                Column(Modifier.fillMaxSize().padding(padding)) {
+                    if (notice.isNotBlank()) {
+                        Text(notice, color = Green, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+                    }
+                    when (tab) {
+                        PageTab.HOME -> HomeScreen(::row, customers.size, deliveries.size)
+                        PageTab.STOCK -> StockScreen(::row, ::stock, ::setStock, onNotice = { notice = it })
+                        PageTab.CUSTOMERS -> CustomersScreen(
+                            customers = customers,
+                            onSave = {
+                                customers = it
+                                store.saveCustomers(it)
+                                notice = "Customer list saved."
+                            }
+                        )
+                        PageTab.DELIVERY -> DeliveryScreen(
+                            customers = customers,
+                            rows = CylinderTypes.associateWith(::row),
+                            onDeliver = { customer, type, qty, empties, amount, payment ->
+                                val current = row(type)
+                                if (current.vanFull < qty) {
+                                    notice = "Not enough filled cylinders in van."
+                                } else if (empties > current.vanEmpty + qty) {
+                                    notice = "Returned empty quantity is more than delivered quantity."
+                                } else {
+                                    setStock(type, "vf", current.vanFull - qty)
+                                    setStock(type, "ve", current.vanEmpty + empties)
+                                    val updated = customers.map {
+                                        if (it.id == customer.id) it.copy(
+                                            openingDue = it.openingDue + if (payment == "Credit") amount else 0.0,
+                                            pendingEmpties = (it.pendingEmpties + qty - empties).coerceAtLeast(0)
+                                        ) else it
+                                    }
+                                    customers = updated
+                                    store.saveCustomers(updated)
+                                    val record = SavedDelivery(UUID.randomUUID().toString(), customer.id, customer.name,
+                                        type, qty, empties, amount, payment, System.currentTimeMillis())
+                                    deliveries = listOf(record) + deliveries
+                                    store.saveDeliveries(deliveries)
+                                    notice = "Delivery saved. Stock and customer ledger updated."
+                                }
+                            }
+                        )
+                        PageTab.REPORTS -> ReportsScreen(deliveries, customers, ::row)
+                    }
                 }
             }
         }
@@ -274,317 +183,186 @@ fun DashboardScreen(stock: StockSummary) {
 }
 
 @Composable
-fun StatCard(
-    modifier: Modifier = Modifier,
-    title: String,
-    value: String,
-    subtitle: String,
-    badgeColor: Color
+private fun LoginScreen(
+    phone: String, onPhone: (String) -> Unit, pin: String, onPin: (String) -> Unit,
+    error: String, onContinue: () -> Unit
 ) {
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = CardDark)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = title, color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(text = value, color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(text = subtitle, color = badgeColor, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
+        Text("LPG MANAGER", color = Navy, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp)
+        Text("Bharat Gas Agency Management", color = Blue, fontSize = 14.sp)
+        Spacer(Modifier.height(28.dp))
+        Text("Mobile login", color = Ink, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        Text("First login: enter your mobile number and create a 4-digit PIN. Use the same details next time.", color = Color.Gray, fontSize = 12.sp)
+        Spacer(Modifier.height(16.dp))
+        OutlinedTextField(phone, onPhone, label = { Text("10-digit mobile number") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(10.dp))
+        OutlinedTextField(pin, onPin, label = { Text("4-digit PIN") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        if (error.isNotBlank()) Text(error, color = Red, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+        Spacer(Modifier.height(18.dp))
+        Button(onClick = onContinue, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Blue)) {
+            Text("Continue", color = Color.White)
         }
     }
 }
 
 @Composable
-fun GodownScreen(stock: StockSummary, onUpdateStock: (StockSummary) -> Unit) {
-    var inwardQty by remember { mutableStateOf(300) }
-    var loadQty by remember { mutableStateOf(40) }
-    var message by remember { mutableStateOf("") }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item {
-            Text(
-                text = "Godown & Multi-Location Transfers",
-                color = TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Plant bulk inward receipts and intra-location transfers",
-                color = TextSecondary,
-                fontSize = 12.sp
-            )
-        }
-
-        if (message.isNotEmpty()) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = AccentEmerald.copy(alpha = 0.15f))
-                ) {
-                    Text(
-                        text = message,
-                        color = AccentEmerald,
-                        modifier = Modifier.padding(12.dp),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+private fun HomeScreen(row: (String) -> StockRow, customerCount: Int, deliveryCount: Int) {
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { Text("Dashboard", color = Navy, fontSize = 23.sp, fontWeight = FontWeight.Bold) }
+        item { Text("Live stock overview • Data saved on this phone", color = Color.Gray, fontSize = 12.sp) }
+        items(CylinderTypes) { type ->
+            val s = row(type)
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(14.dp)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                    Text(type, color = Navy, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        StockValue("Godown full", s.godownFull)
+                        StockValue("Godown empty", s.godownEmpty)
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        StockValue("Van full", s.vanFull)
+                        StockValue("Van empty", s.vanEmpty)
+                    }
+                    StockValue("Defective", s.defective)
                 }
             }
         }
-
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = CardDark)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "1. Receive Bulk Inward from Bottling Plant",
-                        color = TextPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Adds filled 14.2KG to godown and deducts empty cylinders returned to plant.",
-                        color = TextSecondary,
-                        fontSize = 11.sp
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        onClick = {
-                            if (stock.godownEmpty14 >= inwardQty) {
-                                onUpdateStock(
-                                    stock.copy(
-                                        godownFilled14 = stock.godownFilled14 + inwardQty,
-                                        godownEmpty14 = stock.godownEmpty14 - inwardQty
-                                    )
-                                )
-                                message = "Successfully recorded plant inward of $inwardQty cylinders."
-                            } else {
-                                message = "Not enough empty cylinders in godown for 1-to-1 plant swap."
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("Record Plant Inward (300 Cylinders)")
-                    }
-                }
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = CardDark)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "2. Godown to Delivery Van Loading",
-                        color = TextPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Transfer filled cylinders from main godown to delivery vehicle.",
-                        color = TextSecondary,
-                        fontSize = 11.sp
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        onClick = {
-                            if (stock.godownFilled14 >= loadQty) {
-                                onUpdateStock(
-                                    stock.copy(
-                                        godownFilled14 = stock.godownFilled14 - loadQty,
-                                        vanFilled14 = stock.vanFilled14 + loadQty
-                                    )
-                                )
-                                message = "Issued $loadQty filled cylinders to Delivery Van."
-                            } else {
-                                message = "Insufficient godown stock for loading."
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentEmerald),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("Load 40 Cylinders to Van")
-                    }
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SummaryTile("Customers", customerCount.toString(), Modifier.weight(1f))
+                SummaryTile("Deliveries", deliveryCount.toString(), Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-fun StaffDeliveryScreen(stock: StockSummary, onUpdateStock: (StockSummary) -> Unit) {
-    var customerName by remember { mutableStateOf("Rajesh Sharma") }
-    var deliveryQty by remember { mutableStateOf(1) }
-    var emptyQty by remember { mutableStateOf(1) }
-    var paymentMode by remember { mutableStateOf("UPI") }
-    var feedback by remember { mutableStateOf("") }
+private fun StockValue(label: String, value: Int) {
+    Column(Modifier.padding(vertical = 4.dp)) {
+        Text(label, color = Color.Gray, fontSize = 11.sp)
+        Text(value.toString(), color = Ink, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+    }
+}
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item {
-            Text(
-                text = "Staff Delivery & Cash Register",
-                color = TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Record doorstep cylinder delivery, collect empty, and register payment",
-                color = TextSecondary,
-                fontSize = 12.sp
-            )
-        }
-
-        if (feedback.isNotEmpty()) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = AccentEmerald.copy(alpha = 0.15f))
-                ) {
-                    Text(
-                        text = feedback,
-                        color = AccentEmerald,
-                        modifier = Modifier.padding(12.dp),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = CardDark)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "New Customer Delivery",
-                        color = TextPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(text = "Customer: $customerName", color = TextSecondary, fontSize = 12.sp)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = "Cylinder: 14.2KG Domestic Refill", color = TextSecondary, fontSize = 12.sp)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = "Rate: ₹803 (Total ₹803)", color = AccentOrange, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(
-                        onClick = {
-                            if (stock.vanFilled14 >= deliveryQty) {
-                                onUpdateStock(
-                                    stock.copy(
-                                        vanFilled14 = stock.vanFilled14 - deliveryQty,
-                                        vanEmpty14 = stock.vanEmpty14 + emptyQty
-                                    )
-                                )
-                                feedback = "Delivery confirmed: ₹803 collected via $paymentMode. Stock updated."
-                            } else {
-                                feedback = "Error: Van is out of filled cylinders. Request stock transfer first."
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentEmerald),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Confirm Delivery & Receipt")
-                    }
-                }
-            }
+@Composable
+private fun SummaryTile(title: String, value: String, modifier: Modifier = Modifier) {
+    Card(modifier, colors = CardDefaults.cardColors(containerColor = Yellow.copy(alpha = .25f))) {
+        Column(Modifier.padding(16.dp)) {
+            Text(title, color = Ink, fontSize = 12.sp)
+            Text(value, color = Navy, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
 
 @Composable
-fun CustomerLedgerScreen() {
-    val customers = remember {
-        listOf(
-            CustomerItem("c1", "Grand Palace Hotel", "9876543210", "COMMERCIAL", 6, 9400.0),
-            CustomerItem("c2", "Sunrise Cafe & Bakers", "9876501234", "COMMERCIAL", 3, 3760.0),
-            CustomerItem("c3", "Royal Sweets Corner", "9876598765", "COMMERCIAL", 2, 0.0),
-            CustomerItem("c4", "Rajesh Sharma", "9812345678", "DOMESTIC", 0, 0.0)
-        )
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Text(
-                text = "Commercial Customer Ledger (19KG)",
-                color = TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Track unreturned empties and credit balances for commercial clients",
-                color = TextSecondary,
-                fontSize = 12.sp
-            )
+private fun StockScreen(
+    row: (String) -> StockRow, stock: (String, String) -> Int,
+    setStock: (String, String, Int) -> Unit, onNotice: (String) -> Unit
+) {
+    var type by remember { mutableStateOf(CylinderTypes.first()) }
+    var qtyText by remember { mutableStateOf("1") }
+    var action by remember { mutableStateOf("Plant inward") }
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { Text("Stock & Godown", color = Navy, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+        items(CylinderTypes) { t ->
+            val s = row(t)
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                    Text(t, color = Navy, fontWeight = FontWeight.Bold)
+                    Text("Godown: ${s.godownFull} full / ${s.godownEmpty} empty", color = Ink)
+                    Text("Van: ${s.vanFull} full / ${s.vanEmpty} empty • Defective: ${s.defective}", color = Color.Gray, fontSize = 12.sp)
+                }
+            }
         }
-
-        items(customers) { c ->
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = CardDark)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(text = c.name, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        Text(text = "Phone: ${c.phone} • ${c.type}", color = TextSecondary, fontSize = 11.sp)
-                        if (c.pendingEmpties19 > 0) {
-                            Text(
-                                text = "Pending 19KG Empties: ${c.pendingEmpties19} Cylinders",
-                                color = AccentOrange,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Record stock movement", color = Navy, fontWeight = FontWeight.Bold)
+                    TypeSelector(type, { type = it })
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Plant inward", "Load van", "Return van").forEach { a ->
+                            FilterChip(selected = action == a, onClick = { action = a }, label = { Text(a, fontSize = 10.sp) })
                         }
                     }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = if (c.outstandingBalance > 0) "₹${c.outstandingBalance.toInt()}" else "Settled",
-                            color = if (c.outstandingBalance > 0) AccentRose else AccentEmerald,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(text = "Due Balance", color = TextSecondary, fontSize = 10.sp)
+                    OutlinedTextField(qtyText, { qtyText = it.filter(Char::isDigit).take(5) }, label = { Text("Quantity") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Button(onClick = {
+                        val q = qtyText.toIntOrNull() ?: 0
+                        val s = row(type)
+                        if (q <= 0) onNotice("Enter a valid quantity.")
+                        else when (action) {
+                            "Plant inward" -> if (s.godownEmpty >= q) {
+                                setStock(type, "ge", s.godownEmpty - q); setStock(type, "gf", s.godownFull + q)
+                                onNotice("Plant inward saved.")
+                            } else onNotice("Not enough empty cylinders in godown.")
+                            "Load van" -> if (s.godownFull >= q) {
+                                setStock(type, "gf", s.godownFull - q); setStock(type, "vf", s.vanFull + q)
+                                onNotice("Van loading saved.")
+                            } else onNotice("Not enough filled cylinders in godown.")
+                            else -> if (s.vanEmpty >= q) {
+                                setStock(type, "ve", s.vanEmpty - q); setStock(type, "ge", s.godownEmpty + q)
+                                onNotice("Van empty return saved.")
+                            } else onNotice("Not enough empty cylinders in van.")
+                        }
+                    }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Blue)) { Text("Save stock movement") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TypeSelector(value: String, onChange: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+        OutlinedTextField(value, {}, readOnly = true, label = { Text("Cylinder type") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            modifier = Modifier.menuAnchor().fillMaxWidth())
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            CylinderTypes.forEach { type ->
+                DropdownMenuItem(text = { Text(type) }, onClick = { onChange(type); expanded = false })
+            }
+        }
+    }
+}
+
+@Composable
+private fun CustomersScreen(customers: List<SavedCustomer>, onSave: (List<SavedCustomer>) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("") }
+    var type by remember { mutableStateOf(CylinderTypes.first()) }
+    var due by remember { mutableStateOf("0") }
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { Text("Customer Ledger", color = Navy, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Add customer", color = Navy, fontWeight = FontWeight.Bold)
+                    OutlinedTextField(name, { name = it }, label = { Text("Customer name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(phone, { phone = it.filter(Char::isDigit).take(10) }, label = { Text("Mobile number") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(address, { address = it }, label = { Text("Address") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    TypeSelector(type, { type = it })
+                    OutlinedTextField(due, { due = it.filter { ch -> ch.isDigit() || ch == '.' } }, label = { Text("Opening due (₹)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Button(onClick = {
+                        if (name.isBlank() || phone.length != 10) return@Button
+                        val item = SavedCustomer(UUID.randomUUID().toString(), name.trim(), phone, address.trim(), type, due.toDoubleOrNull() ?: 0.0, 0)
+                        onSave(customers + item)
+                        name = ""; phone = ""; address = ""; due = "0"
+                    }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Blue)) { Text("Save customer") }
+                }
+            }
+        }
+        items(customers, key = { it.id }) { customer ->
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(customer.name, color = Navy, fontWeight = FontWeight.Bold)
+                        Text("${customer.phone} • ${customer.cylinderType}", color = Color.Gray, fontSize = 11.sp)
+                        Text("Due ₹${"%.2f".format(customer.openingDue)} • Pending empties: ${customer.pendingEmpties}", color = Red, fontSize = 12.sp)
+                    }
+                    IconButton(onClick = { onSave(customers.filterNot { it.id == customer.id }) }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete customer", tint = Red)
                     }
                 }
             }
@@ -593,87 +371,52 @@ fun CustomerLedgerScreen() {
 }
 
 @Composable
-fun DefectiveScreen(stock: StockSummary, onUpdateStock: (StockSummary) -> Unit) {
-    var loggedNote by remember { mutableStateOf("") }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+private fun DeliveryScreen(
+    customers: List<SavedCustomer>, rows: Map<String, StockRow>,
+    onDeliver: (SavedCustomer, String, Int, Int, Double, String) -> Unit
+) {
+    var customerId by remember(customers) { mutableStateOf(customers.firstOrNull()?.id.orEmpty()) }
+    var type by remember { mutableStateOf(CylinderTypes.first()) }
+    var qty by remember { mutableStateOf("1") }
+    var empties by remember { mutableStateOf("1") }
+    var amount by remember { mutableStateOf("") }
+    var payment by remember { mutableStateOf("Cash") }
+    var expanded by remember { mutableStateOf(false) }
+    val customer = customers.firstOrNull { it.id == customerId }
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { Text("New Delivery", color = Navy, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
         item {
-            Text(
-                text = "Defective & Leaking Cylinder Tracker",
-                color = TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Segregate damaged or leaking cylinders for plant replacement",
-                color = TextSecondary,
-                fontSize = 12.sp
-            )
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                StatCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Defective 14.2KG",
-                    value = "${stock.defective14}",
-                    subtitle = "Marked for warranty swap",
-                    badgeColor = AccentRose
-                )
-                StatCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Defective 19KG",
-                    value = "${stock.defective19}",
-                    subtitle = "Pin valve leakage",
-                    badgeColor = AccentRose
-                )
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = CardDark)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Log Leaking Cylinder (Valve Leakage)",
-                        color = TextPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Button(
-                        onClick = {
-                            if (stock.vanEmpty14 > 0) {
-                                onUpdateStock(
-                                    stock.copy(
-                                        vanEmpty14 = stock.vanEmpty14 - 1,
-                                        defective14 = stock.defective14 + 1
-                                    )
-                                )
-                                loggedNote = "Logged 1 defective 14.2KG cylinder from Van to Quarantined Defectives."
-                            } else {
-                                loggedNote = "No empties on van to log as defective."
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text("Delivery details", color = Navy, fontWeight = FontWeight.Bold)
+                    if (customers.isEmpty()) Text("Add a customer first in Customers tab.", color = Red)
+                    else {
+                        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                            OutlinedTextField(customer?.name ?: "Select customer", {}, readOnly = true, label = { Text("Customer") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                                modifier = Modifier.menuAnchor().fillMaxWidth())
+                            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                                customers.forEach { c -> DropdownMenuItem(text = { Text(c.name) }, onClick = { customerId = c.id; expanded = false }) }
                             }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentRose),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("Log 1 Defective Cylinder")
-                    }
-                    if (loggedNote.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = loggedNote, color = AccentEmerald, fontSize = 11.sp)
+                        }
+                        TypeSelector(type, { type = it })
+                        Text("Van filled available: ${rows[type]?.vanFull ?: 0}", color = Blue, fontSize = 12.sp)
+                        OutlinedTextField(qty, { qty = it.filter(Char::isDigit).take(4) }, label = { Text("Filled cylinders delivered") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(empties, { empties = it.filter(Char::isDigit).take(4) }, label = { Text("Empty cylinders received") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(amount, { amount = it.filter { ch -> ch.isDigit() || ch == '.' } }, label = { Text("Total amount (₹)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("Cash", "UPI", "Credit").forEach { p ->
+                                FilterChip(selected = payment == p, onClick = { payment = p }, label = { Text(p) })
+                            }
+                        }
+                        Button(onClick = {
+                            val q = qty.toIntOrNull() ?: 0
+                            val e = empties.toIntOrNull() ?: 0
+                            val a = amount.toDoubleOrNull() ?: 0.0
+                            if (customer != null && q > 0 && e <= q && a >= 0) onDeliver(customer, type, q, e, a, payment)
+                        }, enabled = customer != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Blue)) {
+                            Text("Confirm delivery & save receipt")
+                        }
                     }
                 }
             }
@@ -682,72 +425,30 @@ fun DefectiveScreen(stock: StockSummary, onUpdateStock: (StockSummary) -> Unit) 
 }
 
 @Composable
-fun EodSettlementScreen(stock: StockSummary) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item {
-            Text(
-                text = "End-of-Day Staff & Cash Reconciliation",
-                color = TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Verify vehicle cylinders taken vs delivered vs returned with cash & UPI collections",
-                color = TextSecondary,
-                fontSize = 12.sp
-            )
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = CardDark)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Summary for Delivery Route (Van #1)", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(text = "Cylinders Loaded (Morning):", color = TextSecondary, fontSize = 12.sp)
-                        Text(text = "40 Units", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(text = "Cylinders Delivered:", color = TextSecondary, fontSize = 12.sp)
-                        Text(text = "38 Units", color = AccentEmerald, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(text = "Empty Cylinders Collected:", color = TextSecondary, fontSize = 12.sp)
-                        Text(text = "38 Units", color = AccentCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(text = "Remaining Full Cylinders in Van:", color = TextSecondary, fontSize = 12.sp)
-                        Text(text = "2 Units", color = AccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Divider(modifier = Modifier.padding(vertical = 12.dp), color = CardBorder)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(text = "Cash Collected:", color = TextSecondary, fontSize = 12.sp)
-                        Text(text = "₹19,272", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(text = "UPI Collected:", color = TextSecondary, fontSize = 12.sp)
-                        Text(text = "₹11,242", color = AccentCyan, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(text = "Total Money Handover:", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text(text = "₹30,514", color = AccentEmerald, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    }
+private fun ReportsScreen(deliveries: List<SavedDelivery>, customers: List<SavedCustomer>, row: (String) -> StockRow) {
+    val today = deliveries.filter {
+        val day = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(java.util.Date(it.createdAt))
+        day == java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(java.util.Date())
+    }
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { Text("Reports & Day Summary", color = Navy, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+        item { SummaryTile("Today's deliveries", today.sumOf { it.quantity }.toString(), Modifier.fillMaxWidth()) }
+        item { SummaryTile("Today's recorded value", "₹${"%.2f".format(today.sumOf { it.amount })}", Modifier.fillMaxWidth()) }
+        item { SummaryTile("Customers with outstanding due", customers.count { it.openingDue > 0 }.toString(), Modifier.fillMaxWidth()) }
+        item { Text("Payment summary", color = Navy, fontWeight = FontWeight.Bold) }
+        item { Text("Cash: ₹${"%.2f".format(today.filter { it.paymentMode == "Cash" }.sumOf { it.amount })}", color = Ink) }
+        item { Text("UPI: ₹${"%.2f".format(today.filter { it.paymentMode == "UPI" }.sumOf { it.amount })}", color = Ink) }
+        item { Text("Credit: ₹${"%.2f".format(today.filter { it.paymentMode == "Credit" }.sumOf { it.amount })}", color = Ink) }
+        item { Divider(); Text("Recent deliveries", color = Navy, fontWeight = FontWeight.Bold) }
+        items(deliveries.take(100), key = { it.id }) { d ->
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(d.customerName, color = Navy, fontWeight = FontWeight.Bold)
+                    Text("${d.cylinderType} • Qty ${d.quantity} • Empty ${d.emptyReturned}", color = Ink, fontSize = 12.sp)
+                    Text("₹${"%.2f".format(d.amount)} • ${d.paymentMode}", color = Blue, fontSize = 12.sp)
                 }
             }
         }
+        item { Text("Stock data is stored locally on this phone. Use regular device backup; uninstalling the app may remove local data.", color = Color.Gray, fontSize = 11.sp) }
     }
 }
