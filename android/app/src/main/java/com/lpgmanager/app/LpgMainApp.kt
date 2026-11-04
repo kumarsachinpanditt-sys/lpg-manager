@@ -61,7 +61,7 @@ fun LpgAppRoot() {
     fun stock(type: String, location: String): Int {
         stockVersion
         val key = if (location == "gf" || location == "ge") "stock_${type}_${location}_${activeGodownId}" else "stock_${type}_${location}"
-        val legacy = if (location == "gf" || location == "ge") store.readInt("stock_${type}_${location}", 0) else 0
+        val legacy = if ((location == "gf" || location == "ge") && activeGodownId == "default-godown") store.readInt("stock_${type}_${location}", 0) else 0
         return store.readInt(key, legacy)
     }
     fun setStock(type: String, location: String, value: Int) {
