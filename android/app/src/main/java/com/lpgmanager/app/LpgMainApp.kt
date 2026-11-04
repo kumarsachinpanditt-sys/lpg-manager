@@ -45,7 +45,8 @@ private enum class PageTab(val label: String) {
 fun LpgAppRoot() {
     val context = LocalContext.current
     val store = remember { LpgPersistentStore(context) }
-    var isLoggedIn by remember { mutableStateOf(store.readString("login_phone").isNotBlank()) }
+    var isLoggedIn by remember { mutableStateOf(false) }
+    var sessionRole by remember { mutableStateOf("Admin") }
     var tab by remember { mutableStateOf(PageTab.HOME) }
     var phone by remember { mutableStateOf("") }
     var pin by remember { mutableStateOf("") }
@@ -82,15 +83,23 @@ fun LpgAppRoot() {
                     val savedPhone = store.readString("login_phone")
                     val savedPin = store.readString("login_pin")
                     if (phone.length != 10 || pin.length != 4) {
-                        loginError = "Enter a 10-digit mobile number and 4-digit PIN."
+                        loginError = "10 digit mobile number aur 4 digit PIN dalein."
                     } else if (savedPhone.isBlank()) {
                         store.writeString("login_phone", phone)
                         store.writeString("login_pin", pin)
+                        sessionRole = "Admin"
                         isLoggedIn = true
                     } else if (phone == savedPhone && pin == savedPin) {
+                        sessionRole = "Admin"
                         isLoggedIn = true
                     } else {
-                        loginError = "Mobile number or PIN is incorrect."
+                        val staffAccount = staff.firstOrNull { it.phone == phone && it.pin == pin }
+                        if (staffAccount != null) {
+                            sessionRole = "Staff"
+                            isLoggedIn = true
+                        } else {
+                            loginError = "Mobile number ya PIN galat hai. Staff ko Admin se login details lein."
+                        }
                     }
                 }
             )
@@ -108,6 +117,7 @@ fun LpgAppRoot() {
                         actions = {
                             IconButton(onClick = {
                                 isLoggedIn = false
+                                sessionRole = "Admin"
                                 phone = ""
                                 pin = ""
                             }) { Icon(Icons.Default.Logout, contentDescription = "Logout", tint = Color.White) }
@@ -117,7 +127,7 @@ fun LpgAppRoot() {
                 },
                 bottomBar = {
                     NavigationBar(containerColor = Color.White) {
-                        PageTab.values().forEach { item ->
+                        PageTab.values().filter { sessionRole == "Admin" || it != PageTab.MANAGE }.forEach { item ->
                             NavigationBarItem(
                                 selected = tab == item,
                                 onClick = { tab = item; notice = "" },
@@ -202,7 +212,7 @@ private fun LoginScreen(
         Text("Bharat Gas Agency Management", color = Blue, fontSize = 14.sp)
         Spacer(Modifier.height(28.dp))
         Text("Mobile login", color = Ink, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-        Text("First login: enter your mobile number and create a 4-digit PIN. Use the same details next time.", color = Color.Gray, fontSize = 12.sp)
+        Text("Admin: pehli baar apna mobile number aur 4-digit PIN banayein. Staff ko Admin Manage tab se mobile + PIN dega.", color = Color.Gray, fontSize = 12.sp)
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(phone, onPhone, label = { Text("10-digit mobile number") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(10.dp))
@@ -293,7 +303,7 @@ private fun StockScreen(
                     Text("Record stock movement", color = Navy, fontWeight = FontWeight.Bold)
                     TypeSelector(type, { type = it })
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Plant inward", "Load van", "Return van").forEach { a ->
+                        listOf("Plant inward", "Load van", "Return van", "Stock In Full", "Stock In Empty", "Stock Out Full", "Stock Out Empty", "Stock Out Defective").forEach { a ->
                             FilterChip(selected = action == a, onClick = { action = a }, label = { Text(a, fontSize = 10.sp) })
                         }
                     }
@@ -303,6 +313,11 @@ private fun StockScreen(
                         val s = row(type)
                         if (q <= 0) onNotice("Enter a valid quantity.")
                         else when (action) {
+                            "Stock In Full" -> { setStock(type, "gf", s.godownFull + q); onNotice("Stock In: filled cylinders added.") }
+                            "Stock In Empty" -> { setStock(type, "ge", s.godownEmpty + q); onNotice("Stock In: empty cylinders added.") }
+                            "Stock Out Full" -> if (s.godownFull >= q) { setStock(type, "gf", s.godownFull - q); onNotice("Stock Out: filled cylinders removed.") } else onNotice("Godown filled stock is insufficient.")
+                            "Stock Out Empty" -> if (s.godownEmpty >= q) { setStock(type, "ge", s.godownEmpty - q); onNotice("Stock Out: empty cylinders removed.") } else onNotice("Godown empty stock is insufficient.")
+                            "Stock Out Defective" -> if (s.defective >= q) { setStock(type, "def", s.defective - q); onNotice("Stock Out: defective cylinders removed.") } else onNotice("Defective stock is insufficient.")
                             "Plant inward" -> if (s.godownEmpty >= q) {
                                 setStock(type, "ge", s.godownEmpty - q); setStock(type, "gf", s.godownFull + q)
                                 onNotice("Plant inward saved.")
@@ -446,6 +461,7 @@ private fun ManageScreen(
 ) {
     var staffName by remember { mutableStateOf("") }
     var staffPhone by remember { mutableStateOf("") }
+    var staffPin by remember { mutableStateOf("") }
     var godownName by remember { mutableStateOf("") }
     var editingStaff by remember { mutableStateOf("") }
     var editingGodown by remember { mutableStateOf("") }
@@ -456,8 +472,14 @@ private fun ManageScreen(
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Add staff", color = Navy, fontWeight = FontWeight.Bold)
                     OutlinedTextField(staffName, { staffName = it }, label = { Text("Staff name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    OutlinedTextField(staffPhone, { staffPhone = it.filter(Char::isDigit).take(10) }, label = { Text("Mobile (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    Button(onClick = { if (staffName.isNotBlank()) { onStaffChange(staff + SavedStaff(UUID.randomUUID().toString(), staffName.trim(), staffPhone)); staffName = ""; staffPhone = "" } }, modifier = Modifier.fillMaxWidth()) { Text("Add staff") }
+                    OutlinedTextField(staffPhone, { staffPhone = it.filter(Char::isDigit).take(10) }, label = { Text("Staff mobile number (10 digits)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(staffPin, { staffPin = it.filter(Char::isDigit).take(4) }, label = { Text("Staff 4-digit login PIN") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = PasswordVisualTransformation())
+                    Button(onClick = {
+                        if (staffName.isNotBlank() && staffPhone.length == 10 && staffPin.length == 4 && staff.none { it.phone == staffPhone }) {
+                            onStaffChange(staff + SavedStaff(UUID.randomUUID().toString(), staffName.trim(), staffPhone, "Staff", staffPin))
+                            staffName = ""; staffPhone = ""; staffPin = ""
+                        }
+                    }, enabled = staffName.isNotBlank() && staffPhone.length == 10 && staffPin.length == 4, modifier = Modifier.fillMaxWidth()) { Text("Add staff login") }
                 }
             }
         }
@@ -466,7 +488,7 @@ private fun ManageScreen(
             Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
                 Column(Modifier.padding(12.dp)) {
                     OutlinedTextField(name, { name = it }, label = { Text("Staff name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    Text(s.phone, color = Color.Gray, fontSize = 11.sp)
+                    Text("Mobile: ${s.phone} • Login PIN set", color = Color.Gray, fontSize = 11.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = { if (name.isNotBlank()) onStaffChange(staff.map { if (it.id == s.id) it.copy(name = name.trim()) else it }) }) { Text("Rename") }
                         TextButton(onClick = { onStaffChange(staff.filterNot { it.id == s.id }) }) { Text("Remove", color = Red) }
