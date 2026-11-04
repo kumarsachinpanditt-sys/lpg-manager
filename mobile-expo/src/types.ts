@@ -1,0 +1,11 @@
+export type Role = 'SUPER_ADMIN' | 'MANAGER' | 'STAFF' | 'DELIVERY_BOY';
+export type LocationType = 'GODOWN' | 'SHOWROOM_OFFICE' | 'DELIVERY_VAN';
+export type PaymentMode = 'CASH' | 'UPI' | 'CARD' | 'CREDIT_Udhaari' | 'PARTIAL';
+export type TxType = 'SALE' | 'INTERNAL_TRANSFER' | 'VENDOR_INWARD' | 'EMPTY_INWARD' | 'STAFF_CASH_HANDOVER' | 'STOCK_ADJUSTMENT';
+export type CylinderCategory = {id:number; title:string; weight_kg:number; base_rate:number; deposit_security_amount:number};
+export type User = {id:number; name:string; mobile:string; role:Role; active_status:number; assigned_location_id:number|null; current_cash_in_hand:number};
+export type Location = {id:number; name:string; type:LocationType};
+export type Stock = {location_id:number; category_id:number; filled_cylinders:number; empty_cylinders:number; defective_cylinders:number};
+export type SaleInput = {staffId:number; sourceLocationId:number; categoryId:number; soldQty:number; returnedEmptyQty:number; rate:number; paidAmount:number; paymentMode:PaymentMode; customerName:string; customerMobile:string; customerAddress:string; remarks?:string};
+export const ADMIN_ROLES: Role[] = ['SUPER_ADMIN','MANAGER'];
+export const DEFAULT_CATEGORIES = [{title:'14.2 KG Domestic',weight_kg:14.2,base_rate:0,deposit_security_amount:0},{title:'19 KG Commercial',weight_kg:19,base_rate:0,deposit_security_amount:0},{title:'5 KG Chotu',weight_kg:5,base_rate:0,deposit_security_amount:0}];
