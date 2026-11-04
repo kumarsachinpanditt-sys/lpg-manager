@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "Bharat Gas Care Agency",
+    "slug": "bharat-gas-care-agency",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.bharatgascare.agency",
+      "versionCode": 1,
+      "permissions": []
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-print"
+    ]
+  }
+}
