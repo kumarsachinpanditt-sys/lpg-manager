@@ -20,6 +20,7 @@ data class SavedCustomer(
 
 data class SavedStaff(val id: String, val name: String, val phone: String = "", val role: String = "Staff", val pin: String = "")
 data class SavedGodown(val id: String, val name: String)
+data class SavedStockMovement(val id: String, val cylinderType: String, val action: String, val quantity: Int, val godownName: String, val createdAt: Long, val note: String = "")
 
 data class SavedDelivery(
     val id: String,
@@ -63,6 +64,27 @@ class LpgPersistentStore(context: Context) {
         val a = JSONArray()
         items.forEach { a.put(JSONObject().apply { put("id", it.id); put("name", it.name) }) }
         prefs.edit().putString("godowns", a.toString()).apply()
+    }
+
+
+    fun stockMovements(): List<SavedStockMovement> {
+        val a = JSONArray(prefs.getString("stock_movements", "[]"))
+        return buildList {
+            for (i in 0 until a.length()) {
+                val o = a.optJSONObject(i) ?: continue
+                add(SavedStockMovement(o.optString("id"), o.optString("cylinderType"), o.optString("action"), o.optInt("quantity"), o.optString("godownName"), o.optLong("createdAt"), o.optString("note")))
+            }
+        }
+    }
+    fun saveStockMovements(items: List<SavedStockMovement>) {
+        val a = JSONArray()
+        items.take(500).forEach { m ->
+            a.put(JSONObject().apply {
+                put("id", m.id); put("cylinderType", m.cylinderType); put("action", m.action)
+                put("quantity", m.quantity); put("godownName", m.godownName); put("createdAt", m.createdAt); put("note", m.note)
+            })
+        }
+        prefs.edit().putString("stock_movements", a.toString()).apply()
     }
 
     fun customers(): List<SavedCustomer> {
