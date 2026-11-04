@@ -311,6 +311,7 @@ private fun StockScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TypeSelector(value: String, onChange: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
