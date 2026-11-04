@@ -119,6 +119,7 @@ data class LpgTransaction(
     val staffName: String = "",
     val customerId: String = "",
     val customerName: String = "",
+    val consumerNo: String = "",
     val cylinderType: String = "",
     val quantity: Int = 0,
     val emptyReturned: Int = 0,
