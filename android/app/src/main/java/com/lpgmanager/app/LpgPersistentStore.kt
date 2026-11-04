@@ -18,7 +18,7 @@ data class SavedCustomer(
     val pendingEmpties: Int = 0
 )
 
-data class SavedStaff(val id: String, val name: String, val phone: String = "", val role: String = "Staff")
+data class SavedStaff(val id: String, val name: String, val phone: String = "", val role: String = "Staff", val pin: String = "")
 data class SavedGodown(val id: String, val name: String)
 
 data class SavedDelivery(
@@ -44,11 +44,11 @@ class LpgPersistentStore(context: Context) {
 
     fun staff(): List<SavedStaff> {
         val a = JSONArray(prefs.getString("staff", "[]"))
-        return buildList { for (i in 0 until a.length()) { val o = a.optJSONObject(i) ?: continue; add(SavedStaff(o.optString("id"), o.optString("name"), o.optString("phone"), o.optString("role", "Staff"))) } }
+        return buildList { for (i in 0 until a.length()) { val o = a.optJSONObject(i) ?: continue; add(SavedStaff(o.optString("id"), o.optString("name"), o.optString("phone"), o.optString("role", "Staff"), o.optString("pin"))) } }
     }
     fun saveStaff(items: List<SavedStaff>) {
         val a = JSONArray()
-        items.forEach { a.put(JSONObject().apply { put("id", it.id); put("name", it.name); put("phone", it.phone); put("role", it.role) }) }
+        items.forEach { a.put(JSONObject().apply { put("id", it.id); put("name", it.name); put("phone", it.phone); put("role", it.role); put("pin", it.pin) }) }
         prefs.edit().putString("staff", a.toString()).apply()
     }
     fun godowns(): List<SavedGodown> {
