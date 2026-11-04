@@ -56,6 +56,7 @@ fun LpgAppRoot() {
     var godowns by remember { mutableStateOf(store.godowns()) }
     var activeGodownId by remember { mutableStateOf(store.readString("active_godown", store.godowns().first().id)) }
     var deliveries by remember { mutableStateOf(store.deliveries()) }
+    var stockMovements by remember { mutableStateOf(store.stockMovements()) }
     var stockVersion by remember { mutableIntStateOf(0) }
     var notice by remember { mutableStateOf("") }
 
@@ -154,7 +155,7 @@ fun LpgAppRoot() {
                     }
                     when (tab) {
                         PageTab.HOME -> HomeScreen(::row, customers.size, deliveries.size)
-                        PageTab.STOCK -> StockScreen(::row, ::stock, ::setStock, godowns, activeGodownId, { activeGodownId = it; store.writeString("active_godown", it); stockVersion++ }, onNotice = { notice = it })
+                        PageTab.STOCK -> StockScreen(::row, ::stock, ::setStock, godowns, activeGodownId, stockMovements, { activeGodownId = it; store.writeString("active_godown", it); stockVersion++ }, onMovement = { action, type, qty -> val gName = godowns.firstOrNull { it.id == activeGodownId }?.name ?: "Warehouse"; stockMovements = (listOf(SavedStockMovement(UUID.randomUUID().toString(), type, action, qty, gName, System.currentTimeMillis())) + stockMovements).take(500); store.saveStockMovements(stockMovements) }, onNotice = { notice = it })
                         PageTab.CUSTOMERS -> CustomersScreen(
                             customers = customers,
                             onSave = {
@@ -279,7 +280,8 @@ private fun SummaryTile(title: String, value: String, modifier: Modifier = Modif
 private fun StockScreen(
     row: (String) -> StockRow, stock: (String, String) -> Int,
     setStock: (String, String, Int) -> Unit, godowns: List<SavedGodown>, activeGodownId: String,
-    onGodown: (String) -> Unit, onNotice: (String) -> Unit
+    movements: List<SavedStockMovement>, onGodown: (String) -> Unit,
+    onMovement: (String, String, Int) -> Unit, onNotice: (String) -> Unit
 ) {
     var type by remember { mutableStateOf(CylinderTypes.first()) }
     var qtyText by remember { mutableStateOf("1") }
@@ -313,28 +315,41 @@ private fun StockScreen(
                         val s = row(type)
                         if (q <= 0) onNotice("Enter a valid quantity.")
                         else when (action) {
-                            "Stock In Full" -> { setStock(type, "gf", s.godownFull + q); onNotice("Stock In: filled cylinders added.") }
-                            "Stock In Empty" -> { setStock(type, "ge", s.godownEmpty + q); onNotice("Stock In: empty cylinders added.") }
-                            "Stock In Defective" -> { setStock(type, "def", s.defective + q); onNotice("Stock In: defective cylinders added.") }
-                            "Stock Out Full" -> if (s.godownFull >= q) { setStock(type, "gf", s.godownFull - q); onNotice("Stock Out: filled cylinders removed.") } else onNotice("Godown filled stock is insufficient.")
-                            "Stock Out Empty" -> if (s.godownEmpty >= q) { setStock(type, "ge", s.godownEmpty - q); onNotice("Stock Out: empty cylinders removed.") } else onNotice("Godown empty stock is insufficient.")
-                            "Stock Out Defective" -> if (s.defective >= q) { setStock(type, "def", s.defective - q); onNotice("Stock Out: defective cylinders removed.") } else onNotice("Defective stock is insufficient.")
+                            "Stock In Full" -> { setStock(type, "gf", s.godownFull + q); onMovement(action, type, q); onNotice("Stock In: filled cylinders added.") }
+                            "Stock In Empty" -> { setStock(type, "ge", s.godownEmpty + q); onMovement(action, type, q); onNotice("Stock In: empty cylinders added.") }
+                            "Stock In Defective" -> { setStock(type, "def", s.defective + q); onMovement(action, type, q); onNotice("Stock In: defective cylinders added.") }
+                            "Stock Out Full" -> if (s.godownFull >= q) { setStock(type, "gf", s.godownFull - q); onMovement(action, type, q); onNotice("Stock Out: filled cylinders removed.") } else onNotice("Godown filled stock is insufficient.")
+                            "Stock Out Empty" -> if (s.godownEmpty >= q) { setStock(type, "ge", s.godownEmpty - q); onMovement(action, type, q); onNotice("Stock Out: empty cylinders removed.") } else onNotice("Godown empty stock is insufficient.")
+                            "Stock Out Defective" -> if (s.defective >= q) { setStock(type, "def", s.defective - q); onMovement(action, type, q); onNotice("Stock Out: defective cylinders removed.") } else onNotice("Defective stock is insufficient.")
                             "Plant inward" -> if (s.godownEmpty >= q) {
                                 setStock(type, "ge", s.godownEmpty - q); setStock(type, "gf", s.godownFull + q)
-                                onNotice("Plant inward saved.")
+                                onMovement(action, type, q); onNotice("Plant inward saved.")
                             } else onNotice("Not enough empty cylinders in godown.")
                             "Load van" -> if (s.godownFull >= q) {
                                 setStock(type, "gf", s.godownFull - q); setStock(type, "vf", s.vanFull + q)
-                                onNotice("Van loading saved.")
+                                onMovement(action, type, q); onNotice("Van loading saved.")
                             } else onNotice("Not enough filled cylinders in godown.")
                             else -> if (s.vanEmpty >= q) {
                                 setStock(type, "ve", s.vanEmpty - q); setStock(type, "ge", s.godownEmpty + q)
-                                onNotice("Van empty return saved.")
+                                onMovement(action, type, q); onNotice("Van empty return saved.")
                             } else onNotice("Not enough empty cylinders in van.")
                         }
                     }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Blue)) { Text("Save stock movement") }
                 }
             }
+        item {
+            Text("Recent stock movement history", color = Navy, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            if (movements.isEmpty()) Text("Abhi koi movement record nahi hai.", color = Color.Gray, fontSize = 12.sp)
+        }
+        items(movements.take(30), key = { "movement-" + it.id }) { m ->
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                    Text("${m.action} • ${m.quantity} cylinders", color = Navy, fontWeight = FontWeight.Bold)
+                    Text("${m.cylinderType} • ${m.godownName}", color = Ink, fontSize = 12.sp)
+                    Text(java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(m.createdAt)), color = Color.Gray, fontSize = 11.sp)
+                }
+            }
+        }
         }
     }
 }
