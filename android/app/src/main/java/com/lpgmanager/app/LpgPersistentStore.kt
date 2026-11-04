@@ -18,6 +18,9 @@ data class SavedCustomer(
     val pendingEmpties: Int = 0
 )
 
+data class SavedStaff(val id: String, val name: String, val phone: String = "", val role: String = "Staff")
+data class SavedGodown(val id: String, val name: String)
+
 data class SavedDelivery(
     val id: String,
     val customerId: String,
@@ -37,6 +40,30 @@ class LpgPersistentStore(context: Context) {
     fun writeInt(key: String, value: Int) { prefs.edit().putInt(key, value).apply() }
     fun readString(key: String, defaultValue: String = ""): String = prefs.getString(key, defaultValue) ?: defaultValue
     fun writeString(key: String, value: String) { prefs.edit().putString(key, value).apply() }
+
+
+    fun staff(): List<SavedStaff> {
+        val a = JSONArray(prefs.getString("staff", "[]"))
+        return buildList { for (i in 0 until a.length()) { val o = a.optJSONObject(i) ?: continue; add(SavedStaff(o.optString("id"), o.optString("name"), o.optString("phone"), o.optString("role", "Staff"))) } }
+    }
+    fun saveStaff(items: List<SavedStaff>) {
+        val a = JSONArray()
+        items.forEach { a.put(JSONObject().apply { put("id", it.id); put("name", it.name); put("phone", it.phone); put("role", it.role) }) }
+        prefs.edit().putString("staff", a.toString()).apply()
+    }
+    fun godowns(): List<SavedGodown> {
+        val a = JSONArray(prefs.getString("godowns", "[]"))
+        val result = buildList { for (i in 0 until a.length()) { val o = a.optJSONObject(i) ?: continue; add(SavedGodown(o.optString("id"), o.optString("name"))) } }
+        if (result.isNotEmpty()) return result
+        val initial = listOf(SavedGodown("default-godown", "Main Godown"))
+        saveGodowns(initial)
+        return initial
+    }
+    fun saveGodowns(items: List<SavedGodown>) {
+        val a = JSONArray()
+        items.forEach { a.put(JSONObject().apply { put("id", it.id); put("name", it.name) }) }
+        prefs.edit().putString("godowns", a.toString()).apply()
+    }
 
     fun customers(): List<SavedCustomer> {
         val array = JSONArray(prefs.getString("customers", "[]"))
