@@ -1,0 +1,207 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System user with role ADMIN or STAFF and credential verification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "STAFF"] },
+        "phone": { "type": "string" },
+        "pinHash": { "type": "string" },
+        "vehicleNo": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "role"]
+    },
+    "Pricing": {
+      "title": "Pricing",
+      "description": "LPG cylinder pricing per cylinder category",
+      "type": "object",
+      "properties": {
+        "cylinderType": { "type": "string", "enum": ["14.2KG", "19KG", "5KG"] },
+        "refillPrice": { "type": "number" },
+        "purchasePrice": { "type": "number" },
+        "depositPrice": { "type": "number" },
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["cylinderType", "refillPrice", "purchasePrice"]
+    },
+    "Godown": {
+      "title": "Godown",
+      "description": "Physical godown storage facility",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "location": { "type": "string" },
+        "capacityCylinders": { "type": "number" },
+        "isPrimary": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "location"]
+    },
+    "GodownStock": {
+      "title": "GodownStock",
+      "description": "Current stock of full, empty and defective cylinders in godown",
+      "type": "object",
+      "properties": {
+        "cylinderType": { "type": "string", "enum": ["14.2KG", "19KG", "5KG"] },
+        "fullQuantity": { "type": "number" },
+        "emptyQuantity": { "type": "number" },
+        "defectiveQuantity": { "type": "number" },
+        "lastUpdated": { "type": "string" }
+      },
+      "required": ["cylinderType", "fullQuantity", "emptyQuantity"]
+    },
+    "OfficeStock": {
+      "title": "OfficeStock",
+      "description": "Agency showroom / counter stock for walk-in consumers",
+      "type": "object",
+      "properties": {
+        "cylinderType": { "type": "string", "enum": ["14.2KG", "19KG", "5KG"] },
+        "fullQuantity": { "type": "number" },
+        "emptyQuantity": { "type": "number" },
+        "defectiveQuantity": { "type": "number" },
+        "lastUpdated": { "type": "string" }
+      },
+      "required": ["cylinderType", "fullQuantity", "emptyQuantity"]
+    },
+    "StaffStock": {
+      "title": "StaffStock",
+      "description": "Stock assigned to delivery staff vehicle or van",
+      "type": "object",
+      "properties": {
+        "staffId": { "type": "string" },
+        "staffName": { "type": "string" },
+        "phone": { "type": "string" },
+        "stock14Kg": { "type": "object" },
+        "stock19Kg": { "type": "object" },
+        "stock5Kg": { "type": "object" },
+        "cashInHand": { "type": "number" },
+        "upiInHand": { "type": "number" },
+        "lastUpdated": { "type": "string" }
+      },
+      "required": ["staffId", "staffName"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "LPG consumer record with domestic/commercial type and dues tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "consumerNo": { "type": "string" },
+        "name": { "type": "string" },
+        "mobile": { "type": "string" },
+        "address": { "type": "string" },
+        "type": { "type": "string", "enum": ["DOMESTIC", "COMMERCIAL"] },
+        "cylinderDues": { "type": "object" },
+        "paymentDue": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "consumerNo", "name", "mobile", "type"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Immutable ledger entry for godown receipt, office transfers, staff issues, delivery, returns",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "txnType": {
+          "type": "string",
+          "enum": [
+            "SUPPLIER_INWARD",
+            "GODOWN_TO_STAFF",
+            "GODOWN_TO_OFFICE",
+            "OFFICE_TO_GODOWN",
+            "STAFF_TO_CUSTOMER",
+            "CUSTOMER_EMPTY_RETURN",
+            "STAFF_DAY_END_RETURN",
+            "PAYMENT_COLLECTION",
+            "DEFECTIVE_LOG",
+            "DEFECTIVE_PLANT_DISPATCH",
+            "ADMIN_REVERSAL",
+            "GODOWN_CREATE",
+            "STAFF_CREATE"
+          ]
+        },
+        "timestamp": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "staffId": { "type": "string" },
+        "staffName": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "cylinderType": { "type": "string", "enum": ["14.2KG", "19KG", "5KG"] },
+        "quantity": { "type": "number" },
+        "emptyReturned": { "type": "number" },
+        "unitPrice": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "paymentMode": { "type": "string", "enum": ["CASH", "UPI", "CREDIT", "NA"] },
+        "paymentStatus": { "type": "string", "enum": ["PAID", "PARTIAL", "DUE", "NA"] },
+        "paidAmount": { "type": "number" },
+        "balanceDue": { "type": "number" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "txnType", "timestamp", "userId"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Agency operational expense like fuel, vehicle repair, wages, godown rent",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "category": { "type": "string" },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "date": { "type": "string" },
+        "paymentMode": { "type": "string" },
+        "recordedBy": { "type": "string" },
+        "recordedByName": { "type": "string" }
+      },
+      "required": ["id", "category", "amount", "date", "recordedBy"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "entities/User" },
+      "description": "User profiles and roles"
+    },
+    "/pricing/{cylinderType}": {
+      "schema": { "$ref": "entities/Pricing" },
+      "description": "Configurable cylinder pricing"
+    },
+    "/godowns/{godownId}": {
+      "schema": { "$ref": "entities/Godown" },
+      "description": "Godown physical storage locations"
+    },
+    "/godown_stock/{cylinderType}": {
+      "schema": { "$ref": "entities/GodownStock" },
+      "description": "Real-time godown cylinder inventory"
+    },
+    "/office_stock/{cylinderType}": {
+      "schema": { "$ref": "entities/OfficeStock" },
+      "description": "Real-time agency office counter stock"
+    },
+    "/staff_stock/{staffId}": {
+      "schema": { "$ref": "entities/StaffStock" },
+      "description": "Real-time delivery staff van inventory and cash"
+    },
+    "/customers/{customerId}": {
+      "schema": { "$ref": "entities/Customer" },
+      "description": "Customer directory with cylinder and payment dues"
+    },
+    "/transactions/{txnId}": {
+      "schema": { "$ref": "entities/Transaction" },
+      "description": "Immutable ledger of all stock and financial movements"
+    },
+    "/expenses/{expenseId}": {
+      "schema": { "$ref": "entities/Expense" },
+      "description": "Gas agency operational expenditures"
+    }
+  }
+}

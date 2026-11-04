@@ -1,0 +1,6 @@
+{
+  "name": "LPG Manager",
+  "description": "Production-grade LPG gas agency inventory, staff stock, customer delivery, empty returns, defective tracking, and EOD financial reconciliation system.",
+  "permissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
