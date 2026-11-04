@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "860057278870",
+    "project_id": "lpg-manager-e1d72",
+    "storage_bucket": "lpg-manager-e1d72.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:860057278870:android:bfd42cfe66148c9ec465b7",
+        "android_client_info": {
+          "package_name": "com.lpgmanager.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDqBCkBxN4BOozx5hMwUCMhvl-Zvy10uRc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
