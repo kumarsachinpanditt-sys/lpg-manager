@@ -37,7 +37,7 @@ private data class StockRow(
 )
 
 private enum class PageTab(val label: String) {
-    HOME("Home"), STOCK("Stock"), CUSTOMERS("Customers"), DELIVERY("Delivery"), REPORTS("Reports")
+    HOME("Home"), STOCK("Stock"), CUSTOMERS("Customers"), DELIVERY("Delivery"), REPORTS("Reports"), MANAGE("Manage")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,16 +51,22 @@ fun LpgAppRoot() {
     var pin by remember { mutableStateOf("") }
     var loginError by remember { mutableStateOf("") }
     var customers by remember { mutableStateOf(store.customers()) }
+    var staff by remember { mutableStateOf(store.staff()) }
+    var godowns by remember { mutableStateOf(store.godowns()) }
+    var activeGodownId by remember { mutableStateOf(store.readString("active_godown", store.godowns().first().id)) }
     var deliveries by remember { mutableStateOf(store.deliveries()) }
     var stockVersion by remember { mutableIntStateOf(0) }
     var notice by remember { mutableStateOf("") }
 
     fun stock(type: String, location: String): Int {
         stockVersion
-        return store.readInt("stock_${type}_${location}", 0)
+        val key = if (location == "gf" || location == "ge") "stock_${type}_${location}_${activeGodownId}" else "stock_${type}_${location}"
+        val legacy = if (location == "gf" || location == "ge") store.readInt("stock_${type}_${location}", 0) else 0
+        return store.readInt(key, legacy)
     }
     fun setStock(type: String, location: String, value: Int) {
-        store.writeInt("stock_${type}_${location}", value.coerceAtLeast(0))
+        val key = if (location == "gf" || location == "ge") "stock_${type}_${location}_${activeGodownId}" else "stock_${type}_${location}"
+        store.writeInt(key, value.coerceAtLeast(0))
         stockVersion++
     }
     fun row(type: String) = StockRow(type, stock(type, "gf"), stock(type, "ge"),
@@ -122,6 +128,7 @@ fun LpgAppRoot() {
                                         PageTab.CUSTOMERS -> Icons.Default.People
                                         PageTab.DELIVERY -> Icons.Default.LocalShipping
                                         PageTab.REPORTS -> Icons.Default.Assessment
+                                        PageTab.MANAGE -> Icons.Default.Settings
                                     }, contentDescription = item.label)
                                 },
                                 label = { Text(item.label, fontSize = 10.sp) },
@@ -137,7 +144,7 @@ fun LpgAppRoot() {
                     }
                     when (tab) {
                         PageTab.HOME -> HomeScreen(::row, customers.size, deliveries.size)
-                        PageTab.STOCK -> StockScreen(::row, ::stock, ::setStock, onNotice = { notice = it })
+                        PageTab.STOCK -> StockScreen(::row, ::stock, ::setStock, godowns, activeGodownId, { activeGodownId = it; store.writeString("active_godown", it); stockVersion++ }, onNotice = { notice = it })
                         PageTab.CUSTOMERS -> CustomersScreen(
                             customers = customers,
                             onSave = {
@@ -175,6 +182,9 @@ fun LpgAppRoot() {
                             }
                         )
                         PageTab.REPORTS -> ReportsScreen(deliveries, customers, ::row)
+                        PageTab.MANAGE -> ManageScreen(staff, godowns,
+                            onStaffChange = { staff = it; store.saveStaff(it); notice = "Staff list saved." },
+                            onGodownChange = { list -> godowns = list; store.saveGodowns(list); if (list.none { it.id == activeGodownId }) { activeGodownId = list.firstOrNull()?.id.orEmpty(); store.writeString("active_godown", activeGodownId) }; notice = "Godown list saved." })
                     }
                 }
             }
@@ -258,13 +268,15 @@ private fun SummaryTile(title: String, value: String, modifier: Modifier = Modif
 @Composable
 private fun StockScreen(
     row: (String) -> StockRow, stock: (String, String) -> Int,
-    setStock: (String, String, Int) -> Unit, onNotice: (String) -> Unit
+    setStock: (String, String, Int) -> Unit, godowns: List<SavedGodown>, activeGodownId: String,
+    onGodown: (String) -> Unit, onNotice: (String) -> Unit
 ) {
     var type by remember { mutableStateOf(CylinderTypes.first()) }
     var qtyText by remember { mutableStateOf("1") }
     var action by remember { mutableStateOf("Plant inward") }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Stock & Godown", color = Navy, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+        item { Text("Select warehouse", color = Ink, fontWeight = FontWeight.Bold); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { godowns.forEach { g -> FilterChip(selected = activeGodownId == g.id, onClick = { onGodown(g.id) }, label = { Text(g.name) }) } } }
         items(CylinderTypes) { t ->
             val s = row(t)
             Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
@@ -371,6 +383,7 @@ private fun CustomersScreen(customers: List<SavedCustomer>, onSave: (List<SavedC
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DeliveryScreen(
     customers: List<SavedCustomer>, rows: Map<String, StockRow>,
@@ -422,6 +435,67 @@ private fun DeliveryScreen(
                 }
             }
         }
+    }
+}
+
+
+@Composable
+private fun ManageScreen(
+    staff: List<SavedStaff>, godowns: List<SavedGodown>,
+    onStaffChange: (List<SavedStaff>) -> Unit, onGodownChange: (List<SavedGodown>) -> Unit
+) {
+    var staffName by remember { mutableStateOf("") }
+    var staffPhone by remember { mutableStateOf("") }
+    var godownName by remember { mutableStateOf("") }
+    var editingStaff by remember { mutableStateOf("") }
+    var editingGodown by remember { mutableStateOf("") }
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { Text("Staff & Warehouse Management", color = Navy, fontSize = 21.sp, fontWeight = FontWeight.Bold) }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Add staff", color = Navy, fontWeight = FontWeight.Bold)
+                    OutlinedTextField(staffName, { staffName = it }, label = { Text("Staff name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(staffPhone, { staffPhone = it.filter(Char::isDigit).take(10) }, label = { Text("Mobile (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Button(onClick = { if (staffName.isNotBlank()) { onStaffChange(staff + SavedStaff(UUID.randomUUID().toString(), staffName.trim(), staffPhone)); staffName = ""; staffPhone = "" } }, modifier = Modifier.fillMaxWidth()) { Text("Add staff") }
+                }
+            }
+        }
+        items(staff, key = { "staff-" + it.id }) { s ->
+            var name by remember(s.id, s.name) { mutableStateOf(s.name) }
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(12.dp)) {
+                    OutlinedTextField(name, { name = it }, label = { Text("Staff name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Text(s.phone, color = Color.Gray, fontSize = 11.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { if (name.isNotBlank()) onStaffChange(staff.map { if (it.id == s.id) it.copy(name = name.trim()) else it }) }) { Text("Rename") }
+                        TextButton(onClick = { onStaffChange(staff.filterNot { it.id == s.id }) }) { Text("Remove", color = Red) }
+                    }
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Add Godown / Warehouse", color = Navy, fontWeight = FontWeight.Bold)
+                    OutlinedTextField(godownName, { godownName = it }, label = { Text("Godown / Warehouse name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Button(onClick = { if (godownName.isNotBlank()) { onGodownChange(godowns + SavedGodown(UUID.randomUUID().toString(), godownName.trim())); godownName = "" } }, modifier = Modifier.fillMaxWidth()) { Text("Add Godown") }
+                }
+            }
+        }
+        items(godowns, key = { "godown-" + it.id }) { g ->
+            var name by remember(g.id, g.name) { mutableStateOf(g.name) }
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(12.dp)) {
+                    OutlinedTextField(name, { name = it }, label = { Text("Godown name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { if (name.isNotBlank()) onGodownChange(godowns.map { if (it.id == g.id) it.copy(name = name.trim()) else it }) }) { Text("Rename") }
+                        TextButton(onClick = { if (godowns.size > 1) onGodownChange(godowns.filterNot { it.id == g.id }) }, enabled = godowns.size > 1) { Text("Remove", color = Red) }
+                    }
+                }
+            }
+        }
+        item { Text("Har warehouse ka stock alag rakha jayega. Stock tab me warehouse select karke inward/loading record karein.", color = Color.Gray, fontSize = 12.sp) }
     }
 }
 
