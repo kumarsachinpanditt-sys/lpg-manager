@@ -89,6 +89,7 @@ fun LpgAppRoot() {
                         store.writeString("login_phone", phone)
                         store.writeString("login_pin", pin)
                         sessionRole = "Admin"
+                        tab = PageTab.HOME
                         isLoggedIn = true
                     } else if (phone == savedPhone && pin == savedPin) {
                         sessionRole = "Admin"
@@ -97,6 +98,7 @@ fun LpgAppRoot() {
                         val staffAccount = staff.firstOrNull { it.phone == phone && it.pin == pin }
                         if (staffAccount != null) {
                             sessionRole = "Staff"
+                            tab = PageTab.HOME
                             isLoggedIn = true
                         } else {
                             loginError = "Mobile number ya PIN galat hai. Staff ko Admin se login details lein."
@@ -118,6 +120,7 @@ fun LpgAppRoot() {
                         actions = {
                             IconButton(onClick = {
                                 isLoggedIn = false
+                                tab = PageTab.HOME
                                 sessionRole = "Admin"
                                 phone = ""
                                 pin = ""
@@ -188,6 +191,10 @@ fun LpgAppRoot() {
                                         type, qty, empties, amount, payment, System.currentTimeMillis())
                                     deliveries = listOf(record) + deliveries
                                     store.saveDeliveries(deliveries)
+                                    val godownLabel = godowns.firstOrNull { it.id == activeGodownId }?.name ?: "Warehouse"
+                                    val deliveryMoves = buildList { add(SavedStockMovement(UUID.randomUUID().toString(), type, "Customer delivery", qty, godownLabel, System.currentTimeMillis(), customer.name)); if (empties > 0) add(SavedStockMovement(UUID.randomUUID().toString(), type, "Customer empty return", empties, godownLabel, System.currentTimeMillis(), customer.name)) }
+                                    stockMovements = (deliveryMoves + stockMovements).take(500)
+                                    store.saveStockMovements(stockMovements)
                                     notice = "Delivery saved. Stock and customer ledger updated."
                                 }
                             }
