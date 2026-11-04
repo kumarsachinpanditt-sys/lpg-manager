@@ -303,7 +303,7 @@ private fun StockScreen(
                     Text("Record stock movement", color = Navy, fontWeight = FontWeight.Bold)
                     TypeSelector(type, { type = it })
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Plant inward", "Load van", "Return van", "Stock In Full", "Stock In Empty", "Stock Out Full", "Stock Out Empty", "Stock Out Defective").forEach { a ->
+                        listOf("Plant inward", "Load van", "Return van", "Stock In Full", "Stock In Empty", "Stock In Defective", "Stock Out Full", "Stock Out Empty", "Stock Out Defective").forEach { a ->
                             FilterChip(selected = action == a, onClick = { action = a }, label = { Text(a, fontSize = 10.sp) })
                         }
                     }
@@ -315,6 +315,7 @@ private fun StockScreen(
                         else when (action) {
                             "Stock In Full" -> { setStock(type, "gf", s.godownFull + q); onNotice("Stock In: filled cylinders added.") }
                             "Stock In Empty" -> { setStock(type, "ge", s.godownEmpty + q); onNotice("Stock In: empty cylinders added.") }
+                            "Stock In Defective" -> { setStock(type, "def", s.defective + q); onNotice("Stock In: defective cylinders added.") }
                             "Stock Out Full" -> if (s.godownFull >= q) { setStock(type, "gf", s.godownFull - q); onNotice("Stock Out: filled cylinders removed.") } else onNotice("Godown filled stock is insufficient.")
                             "Stock Out Empty" -> if (s.godownEmpty >= q) { setStock(type, "ge", s.godownEmpty - q); onNotice("Stock Out: empty cylinders removed.") } else onNotice("Godown empty stock is insufficient.")
                             "Stock Out Defective" -> if (s.defective >= q) { setStock(type, "def", s.defective - q); onNotice("Stock Out: defective cylinders removed.") } else onNotice("Defective stock is insufficient.")
