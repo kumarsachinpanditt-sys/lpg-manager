@@ -12,6 +12,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.pdf.PdfDocument
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -60,6 +66,7 @@ fun LpgAppRoot() {
     var godowns by remember { mutableStateOf(store.godowns()) }
     var activeGodownId by remember { mutableStateOf(store.readString("active_godown", store.godowns().first().id)) }
     var deliveries by remember { mutableStateOf(store.deliveries()) }
+    var cashHandovers by remember { mutableStateOf(store.cashHandovers()) }
     var stockMovements by remember { mutableStateOf(store.stockMovements()) }
     var stockVersion by remember { mutableIntStateOf(0) }
     var notice by remember { mutableStateOf("") }
@@ -215,7 +222,7 @@ fun LpgAppRoot() {
                                 }
                             }
                         )
-                        PageTab.REPORTS -> ReportsScreen(if (sessionRole == "Admin") deliveries else deliveries.filter { it.staffId == sessionStaffId }, customers, ::row, sessionRole)
+                        PageTab.REPORTS -> ReportsScreen(if (sessionRole == "Admin") deliveries else deliveries.filter { it.staffId == sessionStaffId }, customers, ::row, sessionRole, staff, if (sessionRole == "Admin") cashHandovers else cashHandovers.filter { it.staffId == sessionStaffId }, onHandover = { staffId, staffName, amount, note -> val record = SavedCashHandover(UUID.randomUUID().toString(), staffId, staffName, amount, System.currentTimeMillis(), note); cashHandovers = listOf(record) + cashHandovers; store.saveCashHandovers(cashHandovers); notice = "Cash handover saved." })
                         PageTab.MANAGE -> ManageScreen(staff, godowns,
                             onStaffChange = { staff = it; store.saveStaff(it); notice = "Staff list saved." },
                             onGodownChange = { list -> godowns = list; store.saveGodowns(list); if (list.none { it.id == activeGodownId }) { activeGodownId = list.firstOrNull()?.id.orEmpty(); store.writeString("active_godown", activeGodownId) }; notice = "Godown list saved." })
@@ -616,14 +623,104 @@ private fun ManageScreen(
     }
 }
 
+
+private fun shareReceiptPdf(context: android.content.Context, delivery: SavedDelivery) {
+    val document = PdfDocument()
+    val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
+    val page = document.startPage(pageInfo)
+    val canvas = page.canvas
+    val title = Paint().apply { textSize = 22f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD); color = android.graphics.Color.rgb(16, 42, 86) }
+    val normal = Paint().apply { textSize = 13f; color = android.graphics.Color.DKGRAY }
+    val bold = Paint().apply { textSize = 15f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD); color = android.graphics.Color.BLACK }
+    var y = 58f
+    canvas.drawText("BHARAT GAS AGENCY", 42f, y, title); y += 28f
+    canvas.drawText("LPG MANAGER • PAYMENT RECEIPT", 42f, y, normal); y += 30f
+    canvas.drawLine(42f, y, 553f, y, normal); y += 28f
+    val date = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(delivery.createdAt))
+    val lines = listOf(
+        "Receipt No: \${delivery.receiptNo}",
+        "Date: $date",
+        "Customer: \${delivery.customerName}",
+        "Cylinder: \${delivery.cylinderType}",
+        "Quantity delivered: \${delivery.quantity}",
+        "Empty cylinders returned: \${delivery.emptyReturned}",
+        "Handled by: \${delivery.staffName}"
+    )
+    lines.forEach { canvas.drawText(it, 48f, y, normal); y += 24f }
+    y += 8f
+    canvas.drawLine(42f, y, 553f, y, normal); y += 30f
+    canvas.drawText("Bill amount: ₹\${"%.2f".format(delivery.amount)}", 48f, y, bold); y += 26f
+    canvas.drawText("Amount received: ₹\${"%.2f".format(delivery.paidAmount)}", 48f, y, bold); y += 26f
+    canvas.drawText("Balance due: ₹\${"%.2f".format(delivery.dueAmount)}", 48f, y, bold); y += 26f
+    canvas.drawText("Payment mode: \${delivery.paymentMode}", 48f, y, normal); y += 48f
+    canvas.drawText("Thank you for your business.", 48f, y, normal)
+    document.finishPage(page)
+    val out = File(context.cacheDir, "receipt-\${delivery.receiptNo}.pdf")
+    out.outputStream().use { document.writeTo(it) }
+    document.close()
+    val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", out)
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "application/pdf"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(intent, "Share receipt PDF"))
+}
+
 @Composable
-private fun ReportsScreen(deliveries: List<SavedDelivery>, customers: List<SavedCustomer>, row: (String) -> StockRow, sessionRole: String) {
+private fun ReportsScreen(deliveries: List<SavedDelivery>, customers: List<SavedCustomer>, row: (String) -> StockRow, sessionRole: String, staff: List<SavedStaff>, handovers: List<SavedCashHandover>, onHandover: (String, String, Double, String) -> Unit) {
+    val context = LocalContext.current
+    var selectedCashStaff by remember { mutableStateOf("admin") }
+    var selectedCashStaffName by remember { mutableStateOf("Admin") }
+    var handoverAmount by remember { mutableStateOf("") }
+    var handoverNote by remember { mutableStateOf("") }
+    var staffMenu by remember { mutableStateOf(false) }
     val today = deliveries.filter {
         val day = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(java.util.Date(it.createdAt))
         day == java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(java.util.Date())
     }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Text("Reports & Day Summary", color = Navy, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+        if (sessionRole == "Admin") {
+            item {
+                val options = listOf(SavedStaff("admin", "Admin", role = "Admin")) + staff
+                val cashEarned = deliveries.filter { it.staffId == selectedCashStaff && it.paymentMode == "Cash" }.sumOf { it.paidAmount }
+                val alreadyHanded = handovers.filter { it.staffId == selectedCashStaff }.sumOf { it.amount }
+                val availableCash = (cashEarned - alreadyHanded).coerceAtLeast(0.0)
+                Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Cash Collection & Handover", color = Navy, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                        Box {
+                            OutlinedButton(onClick = { staffMenu = true }, modifier = Modifier.fillMaxWidth()) { Text("Cash holder: $selectedCashStaffName") }
+                            DropdownMenu(expanded = staffMenu, onDismissRequest = { staffMenu = false }) {
+                                options.forEach { s -> DropdownMenuItem(text = { Text(s.name) }, onClick = { selectedCashStaff = s.id; selectedCashStaffName = s.name; staffMenu = false }) }
+                            }
+                        }
+                        Text("Cash collected: ₹\${"%.2f".format(cashEarned)} • Already handed over: ₹\${"%.2f".format(alreadyHanded)}", color = Ink, fontSize = 12.sp)
+                        Text("Cash available: ₹\${"%.2f".format(availableCash)}", color = Green, fontWeight = FontWeight.Bold)
+                        OutlinedTextField(handoverAmount, { handoverAmount = it.filter { ch -> ch.isDigit() || ch == '.' } }, label = { Text("Handover amount (₹)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(handoverNote, { handoverNote = it }, label = { Text("Note (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        Button(onClick = {
+                            val amount = handoverAmount.toDoubleOrNull() ?: 0.0
+                            if (amount > 0 && amount <= availableCash) {
+                                onHandover(selectedCashStaff, selectedCashStaffName, amount, handoverNote.trim())
+                                handoverAmount = ""; handoverNote = ""
+                            }
+                        }, enabled = (handoverAmount.toDoubleOrNull() ?: 0.0) > 0 && (handoverAmount.toDoubleOrNull() ?: 0.0) <= availableCash, modifier = Modifier.fillMaxWidth()) { Text("Save cash handover") }
+                    }
+                }
+            }
+            item { Text("Recent cash handovers", color = Navy, fontWeight = FontWeight.Bold) }
+            items(handovers.take(30), key = { "cash-" + it.id }) { h ->
+                Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                    Column(Modifier.padding(10.dp)) {
+                        Text(h.staffName, color = Navy, fontWeight = FontWeight.Bold)
+                        Text("₹\${"%.2f".format(h.amount)} • \${java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(h.createdAt))}", color = Ink, fontSize = 12.sp)
+                        if (h.note.isNotBlank()) Text(h.note, color = Color.Gray, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
         item { SummaryTile("Today's deliveries", today.sumOf { it.quantity }.toString(), Modifier.fillMaxWidth()) }
         item { SummaryTile("Today's recorded value", "₹${"%.2f".format(today.sumOf { it.amount })}", Modifier.fillMaxWidth()) }
         item { SummaryTile("Customers with outstanding due", customers.count { it.openingDue > 0 }.toString(), Modifier.fillMaxWidth()) }
@@ -653,6 +750,7 @@ private fun ReportsScreen(deliveries: List<SavedDelivery>, customers: List<Saved
                     Text("${d.cylinderType} • Qty ${d.quantity} • Empty ${d.emptyReturned}", color = Ink, fontSize = 12.sp)
                     Text("Receipt #${d.receiptNo} • ${d.staffName}", color = Color.Gray, fontSize = 11.sp)
                     Text("Bill ₹${"%.2f".format(d.amount)} • Received ₹${"%.2f".format(d.paidAmount)} • Due ₹${"%.2f".format(d.dueAmount)} • ${d.paymentMode}", color = Blue, fontSize = 12.sp)
+                    TextButton(onClick = { shareReceiptPdf(context, d) }) { Text("Share / Print PDF receipt") }
                 }
             }
         }
