@@ -358,7 +358,6 @@ private fun StockScreen(
                 }
             }
         }
-        }
     }
 }
 
