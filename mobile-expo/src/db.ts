@@ -25,7 +25,7 @@ export async function initDb() {
 export async function hashPin(pin:string) { return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256,pin); }
 export function hasAdmin() { return (db.getFirstSync<{n:number}>("SELECT COUNT(*) n FROM users WHERE role='SUPER_ADMIN'")?.n ?? 0)>0; }
 export async function createUser(name:string,mobile:string,pin:string,role:string,locationId:number|null=null) {
-  if(!name.trim() || !/^\\d{10}$/.test(mobile) || !/^\\d{4}$/.test(pin)) throw new Error('Name, 10-digit mobile aur 4-digit PIN sahi bharein.');
+  if(!name.trim() || !/^\d{10}$/.test(mobile) || !/^\d{4}$/.test(pin)) throw new Error('Name, 10-digit mobile aur 4-digit PIN sahi bharein.');
   const pinHash=await hashPin(pin);
   db.runSync('INSERT INTO users(name,mobile,role,pin_hash,assigned_location_id) VALUES(?,?,?,?,?)',[name.trim(),mobile,role,pinHash,locationId]);
 }
