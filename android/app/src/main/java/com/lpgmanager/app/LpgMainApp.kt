@@ -31,6 +31,8 @@ private data class StockRow(
     val type: String,
     val godownFull: Int,
     val godownEmpty: Int,
+    val officeFull: Int,
+    val officeEmpty: Int,
     val vanFull: Int,
     val vanEmpty: Int,
     val defective: Int
@@ -72,7 +74,7 @@ fun LpgAppRoot() {
         stockVersion++
     }
     fun row(type: String) = StockRow(type, stock(type, "gf"), stock(type, "ge"),
-        stock(type, "vf"), stock(type, "ve"), stock(type, "def"))
+        stock(type, "of"), stock(type, "oe"), stock(type, "vf"), stock(type, "ve"), stock(type, "def"))
 
     MaterialTheme(colorScheme = lightColorScheme(primary = Blue, secondary = Yellow, background = Page)) {
         if (!isLoggedIn) {
@@ -249,6 +251,10 @@ private fun HomeScreen(row: (String) -> StockRow, customerCount: Int, deliveryCo
                         StockValue("Godown empty", s.godownEmpty)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        StockValue("Office full", s.officeFull)
+                        StockValue("Office empty", s.officeEmpty)
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         StockValue("Van full", s.vanFull)
                         StockValue("Van empty", s.vanEmpty)
                     }
@@ -302,6 +308,7 @@ private fun StockScreen(
                 Column(Modifier.fillMaxWidth().padding(14.dp)) {
                     Text(t, color = Navy, fontWeight = FontWeight.Bold)
                     Text("Godown: ${s.godownFull} full / ${s.godownEmpty} empty", color = Ink)
+                    Text("Office: ${s.officeFull} full / ${s.officeEmpty} empty", color = Blue)
                     Text("Van: ${s.vanFull} full / ${s.vanEmpty} empty • Defective: ${s.defective}", color = Color.Gray, fontSize = 12.sp)
                 }
             }
@@ -312,7 +319,7 @@ private fun StockScreen(
                     Text("Record stock movement", color = Navy, fontWeight = FontWeight.Bold)
                     TypeSelector(type, { type = it })
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Plant inward", "Load van", "Return van", "Stock In Full", "Stock In Empty", "Stock In Defective", "Stock Out Full", "Stock Out Empty", "Stock Out Defective").forEach { a ->
+                        listOf("Plant inward", "Godown to Office", "Office to Godown", "Office to Van", "Van to Office", "Load van", "Return van", "Stock In Full", "Stock In Empty", "Stock In Defective", "Stock Out Full", "Stock Out Empty", "Stock Out Defective").forEach { a ->
                             FilterChip(selected = action == a, onClick = { action = a }, label = { Text(a, fontSize = 10.sp) })
                         }
                     }
@@ -328,6 +335,10 @@ private fun StockScreen(
                             "Stock Out Full" -> if (s.godownFull >= q) { setStock(type, "gf", s.godownFull - q); onMovement(action, type, q); onNotice("Stock Out: filled cylinders removed.") } else onNotice("Godown filled stock is insufficient.")
                             "Stock Out Empty" -> if (s.godownEmpty >= q) { setStock(type, "ge", s.godownEmpty - q); onMovement(action, type, q); onNotice("Stock Out: empty cylinders removed.") } else onNotice("Godown empty stock is insufficient.")
                             "Stock Out Defective" -> if (s.defective >= q) { setStock(type, "def", s.defective - q); onMovement(action, type, q); onNotice("Stock Out: defective cylinders removed.") } else onNotice("Defective stock is insufficient.")
+                            "Godown to Office" -> if (s.godownFull >= q) { setStock(type, "gf", s.godownFull - q); setStock(type, "of", s.officeFull + q); onMovement(action, type, q); onNotice("Godown se Office transfer saved.") } else onNotice("Godown filled stock is insufficient.")
+                            "Office to Godown" -> if (s.officeFull >= q) { setStock(type, "of", s.officeFull - q); setStock(type, "gf", s.godownFull + q); onMovement(action, type, q); onNotice("Office se Godown transfer saved.") } else onNotice("Office filled stock is insufficient.")
+                            "Office to Van" -> if (s.officeFull >= q) { setStock(type, "of", s.officeFull - q); setStock(type, "vf", s.vanFull + q); onMovement(action, type, q); onNotice("Office se Van transfer saved.") } else onNotice("Office filled stock is insufficient.")
+                            "Van to Office" -> if (s.vanFull >= q) { setStock(type, "vf", s.vanFull - q); setStock(type, "of", s.officeFull + q); onMovement(action, type, q); onNotice("Van se Office transfer saved.") } else onNotice("Van filled stock is insufficient.")
                             "Plant inward" -> if (s.godownEmpty >= q) {
                                 setStock(type, "ge", s.godownEmpty - q); setStock(type, "gf", s.godownFull + q)
                                 onMovement(action, type, q); onNotice("Plant inward saved.")
