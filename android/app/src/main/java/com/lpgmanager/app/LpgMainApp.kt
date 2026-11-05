@@ -638,24 +638,24 @@ private fun shareReceiptPdf(context: android.content.Context, delivery: SavedDel
     canvas.drawLine(42f, y, 553f, y, normal); y += 28f
     val date = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(delivery.createdAt))
     val lines = listOf(
-        "Receipt No: \${delivery.receiptNo}",
+        "Receipt No: ${delivery.receiptNo}",
         "Date: $date",
-        "Customer: \${delivery.customerName}",
-        "Cylinder: \${delivery.cylinderType}",
-        "Quantity delivered: \${delivery.quantity}",
-        "Empty cylinders returned: \${delivery.emptyReturned}",
-        "Handled by: \${delivery.staffName}"
+        "Customer: ${delivery.customerName}",
+        "Cylinder: ${delivery.cylinderType}",
+        "Quantity delivered: ${delivery.quantity}",
+        "Empty cylinders returned: ${delivery.emptyReturned}",
+        "Handled by: ${delivery.staffName}"
     )
     lines.forEach { canvas.drawText(it, 48f, y, normal); y += 24f }
     y += 8f
     canvas.drawLine(42f, y, 553f, y, normal); y += 30f
-    canvas.drawText("Bill amount: ₹\${"%.2f".format(delivery.amount)}", 48f, y, bold); y += 26f
-    canvas.drawText("Amount received: ₹\${"%.2f".format(delivery.paidAmount)}", 48f, y, bold); y += 26f
-    canvas.drawText("Balance due: ₹\${"%.2f".format(delivery.dueAmount)}", 48f, y, bold); y += 26f
-    canvas.drawText("Payment mode: \${delivery.paymentMode}", 48f, y, normal); y += 48f
+    canvas.drawText("Bill amount: ₹${"%.2f".format(delivery.amount)}", 48f, y, bold); y += 26f
+    canvas.drawText("Amount received: ₹${"%.2f".format(delivery.paidAmount)}", 48f, y, bold); y += 26f
+    canvas.drawText("Balance due: ₹${"%.2f".format(delivery.dueAmount)}", 48f, y, bold); y += 26f
+    canvas.drawText("Payment mode: ${delivery.paymentMode}", 48f, y, normal); y += 48f
     canvas.drawText("Thank you for your business.", 48f, y, normal)
     document.finishPage(page)
-    val out = File(context.cacheDir, "receipt-\${delivery.receiptNo}.pdf")
+    val out = File(context.cacheDir, "receipt-${delivery.receiptNo}.pdf")
     out.outputStream().use { document.writeTo(it) }
     document.close()
     val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", out)
@@ -696,8 +696,8 @@ private fun ReportsScreen(deliveries: List<SavedDelivery>, customers: List<Saved
                                 options.forEach { s -> DropdownMenuItem(text = { Text(s.name) }, onClick = { selectedCashStaff = s.id; selectedCashStaffName = s.name; staffMenu = false }) }
                             }
                         }
-                        Text("Cash collected: ₹\${"%.2f".format(cashEarned)} • Already handed over: ₹\${"%.2f".format(alreadyHanded)}", color = Ink, fontSize = 12.sp)
-                        Text("Cash available: ₹\${"%.2f".format(availableCash)}", color = Green, fontWeight = FontWeight.Bold)
+                        Text("Cash collected: ₹${"%.2f".format(cashEarned)} • Already handed over: ₹${"%.2f".format(alreadyHanded)}", color = Ink, fontSize = 12.sp)
+                        Text("Cash available: ₹${"%.2f".format(availableCash)}", color = Green, fontWeight = FontWeight.Bold)
                         OutlinedTextField(handoverAmount, { handoverAmount = it.filter { ch -> ch.isDigit() || ch == '.' } }, label = { Text("Handover amount (₹)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                         OutlinedTextField(handoverNote, { handoverNote = it }, label = { Text("Note (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                         Button(onClick = {
@@ -715,7 +715,7 @@ private fun ReportsScreen(deliveries: List<SavedDelivery>, customers: List<Saved
                 Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
                     Column(Modifier.padding(10.dp)) {
                         Text(h.staffName, color = Navy, fontWeight = FontWeight.Bold)
-                        Text("₹\${"%.2f".format(h.amount)} • \${java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(h.createdAt))}", color = Ink, fontSize = 12.sp)
+                        Text("₹${"%.2f".format(h.amount)} • ${java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(h.createdAt))}", color = Ink, fontSize = 12.sp)
                         if (h.note.isNotBlank()) Text(h.note, color = Color.Gray, fontSize = 11.sp)
                     }
                 }
