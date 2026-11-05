@@ -10,21 +10,23 @@ export function recordSale(input:SaleInput) {
   positiveInt(input.soldQty,'Sold quantity'); positiveInt(input.returnedEmptyQty,'Returned empty quantity'); money(input.rate,'Rate'); money(input.paidAmount,'Paid amount');
   if(input.soldQty<=0) throw new Error('Kam se kam 1 cylinder sell karein.');
   if(input.returnedEmptyQty>input.soldQty) throw new Error('Returned empty cylinders sold quantity se zyada nahi ho sakte.');
-  if(!input.customerName.trim() || !/^\\d{10}$/.test(input.customerMobile)) throw new Error('Customer name aur 10-digit mobile zaroori hai.');
+  const hasCustomer=!!input.customerName.trim() || !!input.customerMobile.trim();
+  if(hasCustomer && (!input.customerName.trim() || !/^\\d{10}$/.test(input.customerMobile))) throw new Error('Customer details dene par name aur 10-digit mobile dono zaroori hain.');
+  if(!hasCustomer && (input.paidAmount!==total || input.soldQty!==input.returnedEmptyQty)) throw new Error('Counter sale mein full payment aur sabhi empty cylinder return hona chahiye.');
   const total=Number((input.soldQty*input.rate).toFixed(2));
   if(input.paidAmount>total) throw new Error('Paid amount bill se zyada nahi ho sakta.');
   const due=Number((total-input.paidAmount).toFixed(2));
   if(input.paymentMode==='CASH' && due!==0) throw new Error('Cash payment mein poora bill paid hona chahiye; Partial ya Credit chunein.');
-  if(input.paymentMode==='UPI' && due!==0) throw new Error('UPI payment mein poora bill paid hona chahiye; Partial ya Credit chunein.');
+  if((input.paymentMode==='UPI' || input.paymentMode==='CARD') && due!==0) throw new Error('UPI payment mein poora bill paid hona chahiye; Partial ya Credit chunein.');
   if(input.paymentMode==='CREDIT_Udhaari' && input.paidAmount!==0) throw new Error('Credit sale ke liye paid amount zero rakhein ya Partial chunein.');
   db.withTransactionSync(()=>{
     const stock=db.getFirstSync<any>('SELECT filled_cylinders,empty_cylinders FROM stock WHERE location_id=? AND category_id=?',[input.sourceLocationId,input.categoryId]);
     if(!stock || stock.filled_cylinders<input.soldQty) throw new Error('Available filled stock kam hai. Sale roki gayi.');
     db.runSync('UPDATE stock SET filled_cylinders=filled_cylinders-?,empty_cylinders=empty_cylinders+? WHERE location_id=? AND category_id=?',[input.soldQty,input.returnedEmptyQty,input.sourceLocationId,input.categoryId]);
     const pending=input.soldQty-input.returnedEmptyQty;
-    db.runSync('INSERT INTO customers(name,mobile,address,pending_empty_dues,credit_due) VALUES(?,?,?,?,?) ON CONFLICT(mobile) DO UPDATE SET name=excluded.name,address=excluded.address,pending_empty_dues=customers.pending_empty_dues+excluded.pending_empty_dues,credit_due=customers.credit_due+excluded.credit_due',[input.customerName.trim(),input.customerMobile,input.customerAddress,pending,due]);
+    if(hasCustomer) db.runSync('INSERT INTO customers(name,mobile,address,pending_empty_dues,credit_due) VALUES(?,?,?,?,?) ON CONFLICT(mobile) DO UPDATE SET name=excluded.name,address=excluded.address,pending_empty_dues=customers.pending_empty_dues+excluded.pending_empty_dues,credit_due=customers.credit_due+excluded.credit_due',[input.customerName.trim(),input.customerMobile,input.customerAddress,pending,due]);
     if(input.paymentMode==='CASH' || input.paymentMode==='PARTIAL') db.runSync('UPDATE users SET current_cash_in_hand=current_cash_in_hand+? WHERE id=?',[input.paymentMode==='CASH'?input.paidAmount:input.paidAmount,input.staffId]);
-    db.runSync(`INSERT INTO transactions(transaction_id,timestamp,type,executed_by_staff_id,source_location_id,category_id,filled_qty,empty_qty,rate,line_total,total_amount,payment_mode,paid_amount,balance_due,customer_name,customer_mobile,customer_address,remarks) VALUES(?,?, 'SALE',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[txid('SALE'),now(),input.staffId,input.sourceLocationId,input.categoryId,input.soldQty,input.returnedEmptyQty,input.rate,total,total,input.paymentMode,input.paidAmount,due,input.customerName,input.customerMobile,input.customerAddress,input.remarks??'']);
+    db.runSync(`INSERT INTO transactions(transaction_id,timestamp,type,executed_by_staff_id,source_location_id,category_id,filled_qty,empty_qty,rate,line_total,total_amount,payment_mode,paid_amount,balance_due,customer_name,customer_mobile,customer_address,remarks) VALUES(?,?, 'SALE',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[txid('SALE'),now(),input.staffId,input.sourceLocationId,input.categoryId,input.soldQty,input.returnedEmptyQty,input.rate,total,total,input.paymentMode,input.paidAmount,due,hasCustomer?input.customerName:null,hasCustomer?input.customerMobile:null,hasCustomer?input.customerAddress:null,input.remarks??'']);
   });
   return {total,paid:input.paidAmount,due,emptyDue:input.soldQty-input.returnedEmptyQty};
 }
