@@ -27,7 +27,7 @@ jobs:
         run: npm install
       - name: Generate Android project
         working-directory: mobile-expo
-        run: npx expo prebuild --platform android --no-install
+        run: NODE_OPTIONS=--import=tsx npx expo prebuild --platform android --no-install
       - name: Build debug APK
         working-directory: mobile-expo/android
         run: chmod +x gradlew && ./gradlew assembleDebug
