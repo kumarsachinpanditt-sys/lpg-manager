@@ -93,10 +93,14 @@ fun LpgAppRoot() {
                         store.writeString("login_phone", phone)
                         store.writeString("login_pin", pin)
                         sessionRole = "Admin"
+                        sessionStaffId = "admin"
+                        sessionStaffName = "Admin"
                         tab = PageTab.HOME
                         isLoggedIn = true
                     } else if (phone == savedPhone && pin == savedPin) {
                         sessionRole = "Admin"
+                        sessionStaffId = "admin"
+                        sessionStaffName = "Admin"
                         isLoggedIn = true
                     } else {
                         val staffAccount = staff.firstOrNull { it.phone == phone && it.pin == pin }
@@ -638,9 +642,9 @@ private fun ReportsScreen(deliveries: List<SavedDelivery>, customers: List<Saved
             }
         }
         item { Text("Payment summary", color = Navy, fontWeight = FontWeight.Bold) }
-        item { Text("Cash: ₹${"%.2f".format(today.filter { it.paymentMode == "Cash" }.sumOf { it.amount })}", color = Ink) }
-        item { Text("UPI: ₹${"%.2f".format(today.filter { it.paymentMode == "UPI" }.sumOf { it.amount })}", color = Ink) }
-        item { Text("Credit: ₹${"%.2f".format(today.filter { it.paymentMode == "Credit" }.sumOf { it.amount })}", color = Ink) }
+        item { Text("Cash: ₹${"%.2f".format(today.filter { it.paymentMode == "Cash" }.sumOf { it.paidAmount })}", color = Ink) }
+        item { Text("UPI: ₹${"%.2f".format(today.filter { it.paymentMode == "UPI" }.sumOf { it.paidAmount })}", color = Ink) }
+        item { Text("Credit: ₹${"%.2f".format(today.sumOf { it.dueAmount })}", color = Ink) }
         item { Divider(); Text("Recent deliveries", color = Navy, fontWeight = FontWeight.Bold) }
         items(deliveries.take(100), key = { it.id }) { d ->
             Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
