@@ -488,14 +488,15 @@ private fun CustomersScreen(customers: List<SavedCustomer>, onSave: (List<SavedC
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DeliveryScreen(
-    customers: List<SavedCustomer>, rows: Map<String, StockRow>,
-    onDeliver: (SavedCustomer, String, Int, Int, Double, String) -> Unit
+    customers: List<SavedCustomer>, rows: Map<String, StockRow>, staffId: String, staffName: String,
+    onDeliver: (SavedCustomer, String, Int, Int, Double, Double, String, String, String) -> Unit
 ) {
     var customerId by remember(customers) { mutableStateOf(customers.firstOrNull()?.id.orEmpty()) }
     var type by remember { mutableStateOf(CylinderTypes.first()) }
     var qty by remember { mutableStateOf("1") }
     var empties by remember { mutableStateOf("1") }
     var amount by remember { mutableStateOf("") }
+    var paidAmount by remember { mutableStateOf("0") }
     var payment by remember { mutableStateOf("Cash") }
     var expanded by remember { mutableStateOf(false) }
     val customer = customers.firstOrNull { it.id == customerId }
@@ -519,7 +520,9 @@ private fun DeliveryScreen(
                         Text("Van filled available: ${rows[type]?.vanFull ?: 0}", color = Blue, fontSize = 12.sp)
                         OutlinedTextField(qty, { qty = it.filter(Char::isDigit).take(4) }, label = { Text("Filled cylinders delivered") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                         OutlinedTextField(empties, { empties = it.filter(Char::isDigit).take(4) }, label = { Text("Empty cylinders received") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                        OutlinedTextField(amount, { amount = it.filter { ch -> ch.isDigit() || ch == '.' } }, label = { Text("Total amount (₹)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(amount, { amount = it.filter { ch -> ch.isDigit() || ch == '.' } }, label = { Text("Total bill amount (₹)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(paidAmount, { paidAmount = it.filter { ch -> ch.isDigit() || ch == '.' } }, label = { Text("Amount received now (₹)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        Text("Customer due after payment: ₹${((amount.toDoubleOrNull() ?: 0.0) - (paidAmount.toDoubleOrNull() ?: 0.0)).coerceAtLeast(0.0)}", color = Red, fontSize = 12.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("Cash", "UPI", "Credit").forEach { p ->
                                 FilterChip(selected = payment == p, onClick = { payment = p }, label = { Text(p) })
@@ -529,7 +532,8 @@ private fun DeliveryScreen(
                             val q = qty.toIntOrNull() ?: 0
                             val e = empties.toIntOrNull() ?: 0
                             val a = amount.toDoubleOrNull() ?: 0.0
-                            if (customer != null && q > 0 && e <= q && a >= 0) onDeliver(customer, type, q, e, a, payment)
+                            val paid = paidAmount.toDoubleOrNull() ?: 0.0
+                            if (customer != null && q > 0 && e <= q && a >= 0 && paid >= 0 && paid <= a) onDeliver(customer, type, q, e, a, paid, payment, staffId, staffName)
                         }, enabled = customer != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Blue)) {
                             Text("Confirm delivery & save receipt")
                         }
@@ -609,7 +613,7 @@ private fun ManageScreen(
 }
 
 @Composable
-private fun ReportsScreen(deliveries: List<SavedDelivery>, customers: List<SavedCustomer>, row: (String) -> StockRow) {
+private fun ReportsScreen(deliveries: List<SavedDelivery>, customers: List<SavedCustomer>, row: (String) -> StockRow, sessionRole: String) {
     val today = deliveries.filter {
         val day = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(java.util.Date(it.createdAt))
         day == java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(java.util.Date())
@@ -619,6 +623,20 @@ private fun ReportsScreen(deliveries: List<SavedDelivery>, customers: List<Saved
         item { SummaryTile("Today's deliveries", today.sumOf { it.quantity }.toString(), Modifier.fillMaxWidth()) }
         item { SummaryTile("Today's recorded value", "₹${"%.2f".format(today.sumOf { it.amount })}", Modifier.fillMaxWidth()) }
         item { SummaryTile("Customers with outstanding due", customers.count { it.openingDue > 0 }.toString(), Modifier.fillMaxWidth()) }
+        item { Text("Received: ₹${"%.2f".format(today.sumOf { it.paidAmount })}", color = Green, fontWeight = FontWeight.Bold) }
+        item { Text("Outstanding from today: ₹${"%.2f".format(today.sumOf { it.dueAmount })}", color = Red, fontWeight = FontWeight.Bold) }
+        if (sessionRole == "Admin") {
+            item { Text("Staff-wise sales", color = Navy, fontWeight = FontWeight.Bold) }
+            items(deliveries.groupBy { it.staffName }.toList(), key = { "staff-sales-" + it.first }) { (name, records) ->
+                Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                        Text(name, color = Navy, fontWeight = FontWeight.Bold)
+                        Text("Deliveries: ${records.size} • Cylinders: ${records.sumOf { it.quantity }}", color = Ink, fontSize = 12.sp)
+                        Text("Sales: ₹${"%.2f".format(records.sumOf { it.amount })} • Received: ₹${"%.2f".format(records.sumOf { it.paidAmount })} • Due: ₹${"%.2f".format(records.sumOf { it.dueAmount })}", color = Blue, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
         item { Text("Payment summary", color = Navy, fontWeight = FontWeight.Bold) }
         item { Text("Cash: ₹${"%.2f".format(today.filter { it.paymentMode == "Cash" }.sumOf { it.amount })}", color = Ink) }
         item { Text("UPI: ₹${"%.2f".format(today.filter { it.paymentMode == "UPI" }.sumOf { it.amount })}", color = Ink) }
@@ -629,7 +647,8 @@ private fun ReportsScreen(deliveries: List<SavedDelivery>, customers: List<Saved
                 Column(Modifier.padding(12.dp)) {
                     Text(d.customerName, color = Navy, fontWeight = FontWeight.Bold)
                     Text("${d.cylinderType} • Qty ${d.quantity} • Empty ${d.emptyReturned}", color = Ink, fontSize = 12.sp)
-                    Text("₹${"%.2f".format(d.amount)} • ${d.paymentMode}", color = Blue, fontSize = 12.sp)
+                    Text("Receipt #${d.receiptNo} • ${d.staffName}", color = Color.Gray, fontSize = 11.sp)
+                    Text("Bill ₹${"%.2f".format(d.amount)} • Received ₹${"%.2f".format(d.paidAmount)} • Due ₹${"%.2f".format(d.dueAmount)} • ${d.paymentMode}", color = Blue, fontSize = 12.sp)
                 }
             }
         }
