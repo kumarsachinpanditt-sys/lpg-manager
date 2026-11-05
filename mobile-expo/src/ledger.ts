@@ -11,7 +11,7 @@ export function recordSale(input:SaleInput) {
   if(input.soldQty<=0) throw new Error('Kam se kam 1 cylinder sell karein.');
   if(input.returnedEmptyQty>input.soldQty) throw new Error('Returned empty cylinders sold quantity se zyada nahi ho sakte.');
   const hasCustomer=!!input.customerName.trim() || !!input.customerMobile.trim();
-  if(hasCustomer && (!input.customerName.trim() || !/^\\d{10}$/.test(input.customerMobile))) throw new Error('Customer details dene par name aur 10-digit mobile dono zaroori hain.');
+  if(hasCustomer && (!input.customerName.trim() || !/^\d{10}$/.test(input.customerMobile))) throw new Error('Customer details dene par name aur 10-digit mobile dono zaroori hain.');
   const total=Number((input.soldQty*input.rate).toFixed(2));
   if(!hasCustomer && (input.paidAmount!==total || input.soldQty!==input.returnedEmptyQty)) throw new Error('Counter sale mein full payment aur sabhi empty cylinder return hona chahiye.');
   if(input.paidAmount>total) throw new Error('Paid amount bill se zyada nahi ho sakta.');
