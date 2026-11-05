@@ -31,7 +31,12 @@ data class SavedDelivery(
     val emptyReturned: Int,
     val amount: Double,
     val paymentMode: String,
-    val createdAt: Long
+    val createdAt: Long,
+    val staffId: String = "admin",
+    val staffName: String = "Admin",
+    val paidAmount: Double = amount,
+    val dueAmount: Double = (amount - paidAmount).coerceAtLeast(0.0),
+    val receiptNo: String = id.take(8).uppercase()
 )
 
 class LpgPersistentStore(context: Context) {
@@ -135,7 +140,12 @@ class LpgPersistentStore(context: Context) {
                     emptyReturned = item.optInt("emptyReturned"),
                     amount = item.optDouble("amount"),
                     paymentMode = item.optString("paymentMode"),
-                    createdAt = item.optLong("createdAt")
+                    createdAt = item.optLong("createdAt"),
+                    staffId = item.optString("staffId", "admin"),
+                    staffName = item.optString("staffName", "Admin"),
+                    paidAmount = item.optDouble("paidAmount", item.optDouble("amount")),
+                    dueAmount = item.optDouble("dueAmount", 0.0),
+                    receiptNo = item.optString("receiptNo", item.optString("id").take(8).uppercase())
                 ))
             }
         }
@@ -154,6 +164,11 @@ class LpgPersistentStore(context: Context) {
                 put("amount", delivery.amount)
                 put("paymentMode", delivery.paymentMode)
                 put("createdAt", delivery.createdAt)
+                put("staffId", delivery.staffId)
+                put("staffName", delivery.staffName)
+                put("paidAmount", delivery.paidAmount)
+                put("dueAmount", delivery.dueAmount)
+                put("receiptNo", delivery.receiptNo)
             })
         }
         prefs.edit().putString("deliveries", array.toString()).apply()
