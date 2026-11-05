@@ -49,6 +49,8 @@ fun LpgAppRoot() {
     val store = remember { LpgPersistentStore(context) }
     var isLoggedIn by remember { mutableStateOf(false) }
     var sessionRole by remember { mutableStateOf("Admin") }
+    var sessionStaffId by remember { mutableStateOf("admin") }
+    var sessionStaffName by remember { mutableStateOf("Admin") }
     var tab by remember { mutableStateOf(PageTab.HOME) }
     var phone by remember { mutableStateOf("") }
     var pin by remember { mutableStateOf("") }
@@ -99,6 +101,8 @@ fun LpgAppRoot() {
                     } else {
                         val staffAccount = staff.firstOrNull { it.phone == phone && it.pin == pin }
                         if (staffAccount != null) {
+                            sessionStaffId = staffAccount.id
+                            sessionStaffName = staffAccount.name
                             sessionRole = "Staff"
                             tab = PageTab.HOME
                             isLoggedIn = true
@@ -171,8 +175,10 @@ fun LpgAppRoot() {
                         )
                         PageTab.DELIVERY -> DeliveryScreen(
                             customers = customers,
+                            staffId = sessionStaffId,
+                            staffName = sessionStaffName,
                             rows = CylinderTypes.associateWith(::row),
-                            onDeliver = { customer, type, qty, empties, amount, payment ->
+                            onDeliver = { customer, type, qty, empties, amount, paidAmount, payment, deliveryStaffId, deliveryStaffName ->
                                 val current = row(type)
                                 if (current.vanFull < qty) {
                                     notice = "Not enough filled cylinders in van."
@@ -183,14 +189,18 @@ fun LpgAppRoot() {
                                     setStock(type, "ve", current.vanEmpty + empties)
                                     val updated = customers.map {
                                         if (it.id == customer.id) it.copy(
-                                            openingDue = it.openingDue + if (payment == "Credit") amount else 0.0,
+                                            openingDue = it.openingDue + (amount - paidAmount).coerceAtLeast(0.0),
                                             pendingEmpties = (it.pendingEmpties + qty - empties).coerceAtLeast(0)
                                         ) else it
                                     }
                                     customers = updated
                                     store.saveCustomers(updated)
-                                    val record = SavedDelivery(UUID.randomUUID().toString(), customer.id, customer.name,
-                                        type, qty, empties, amount, payment, System.currentTimeMillis())
+                                    val deliveryId = UUID.randomUUID().toString()
+                                    val record = SavedDelivery(deliveryId, customer.id, customer.name,
+                                        type, qty, empties, amount, payment, System.currentTimeMillis(),
+                                        staffId = deliveryStaffId, staffName = deliveryStaffName,
+                                        paidAmount = paidAmount, dueAmount = (amount - paidAmount).coerceAtLeast(0.0),
+                                        receiptNo = deliveryId.take(8).uppercase())
                                     deliveries = listOf(record) + deliveries
                                     store.saveDeliveries(deliveries)
                                     val godownLabel = godowns.firstOrNull { it.id == activeGodownId }?.name ?: "Warehouse"
@@ -201,7 +211,7 @@ fun LpgAppRoot() {
                                 }
                             }
                         )
-                        PageTab.REPORTS -> ReportsScreen(deliveries, customers, ::row)
+                        PageTab.REPORTS -> ReportsScreen(if (sessionRole == "Admin") deliveries else deliveries.filter { it.staffId == sessionStaffId }, customers, ::row, sessionRole)
                         PageTab.MANAGE -> ManageScreen(staff, godowns,
                             onStaffChange = { staff = it; store.saveStaff(it); notice = "Staff list saved." },
                             onGodownChange = { list -> godowns = list; store.saveGodowns(list); if (list.none { it.id == activeGodownId }) { activeGodownId = list.firstOrNull()?.id.orEmpty(); store.writeString("active_godown", activeGodownId) }; notice = "Godown list saved." })
