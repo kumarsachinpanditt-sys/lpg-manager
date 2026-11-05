@@ -20,6 +20,7 @@ data class SavedCustomer(
 
 data class SavedStaff(val id: String, val name: String, val phone: String = "", val role: String = "Staff", val pin: String = "")
 data class SavedGodown(val id: String, val name: String)
+data class SavedCashHandover(val id: String, val staffId: String, val staffName: String, val amount: Double, val createdAt: Long, val note: String = "")
 data class SavedStockMovement(val id: String, val cylinderType: String, val action: String, val quantity: Int, val godownName: String, val createdAt: Long, val note: String = "")
 
 data class SavedDelivery(
@@ -124,6 +125,27 @@ class LpgPersistentStore(context: Context) {
             })
         }
         prefs.edit().putString("customers", array.toString()).apply()
+    }
+
+
+    fun cashHandovers(): List<SavedCashHandover> {
+        val a = JSONArray(prefs.getString("cash_handovers", "[]"))
+        return buildList {
+            for (i in 0 until a.length()) {
+                val o = a.optJSONObject(i) ?: continue
+                add(SavedCashHandover(o.optString("id"), o.optString("staffId"), o.optString("staffName"), o.optDouble("amount"), o.optLong("createdAt"), o.optString("note")))
+            }
+        }
+    }
+    fun saveCashHandovers(items: List<SavedCashHandover>) {
+        val a = JSONArray()
+        items.take(1000).forEach { h ->
+            a.put(JSONObject().apply {
+                put("id", h.id); put("staffId", h.staffId); put("staffName", h.staffName)
+                put("amount", h.amount); put("createdAt", h.createdAt); put("note", h.note)
+            })
+        }
+        prefs.edit().putString("cash_handovers", a.toString()).apply()
     }
 
     fun deliveries(): List<SavedDelivery> {
