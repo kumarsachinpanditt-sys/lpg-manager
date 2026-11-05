@@ -289,6 +289,7 @@ private fun SummaryTile(title: String, value: String, modifier: Modifier = Modif
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StockScreen(
     row: (String) -> StockRow, stock: (String, String) -> Int,
@@ -297,72 +298,114 @@ private fun StockScreen(
     onMovement: (String, String, Int) -> Unit, onNotice: (String) -> Unit
 ) {
     var type by remember { mutableStateOf(CylinderTypes.first()) }
+    var location by remember { mutableStateOf("Godown") }
+    var target by remember { mutableStateOf("Office") }
+    var kind by remember { mutableStateOf("Full") }
+    var action by remember { mutableStateOf("Stock In") }
     var qtyText by remember { mutableStateOf("1") }
-    var action by remember { mutableStateOf("Plant inward") }
+    val locations = listOf("Godown", "Office", "Van")
+    fun key(place: String, item: String): String = when (item) {
+        "Full" -> when (place) { "Godown" -> "gf"; "Office" -> "of"; else -> "vf" }
+        "Empty" -> when (place) { "Godown" -> "ge"; "Office" -> "oe"; else -> "ve" }
+        else -> "def"
+    }
+    fun current(place: String, item: String): Int = stock(type, key(place, item))
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Text("Stock & Godown", color = Navy, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
-        item { Text("Select warehouse", color = Ink, fontWeight = FontWeight.Bold); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { godowns.forEach { g -> FilterChip(selected = activeGodownId == g.id, onClick = { onGodown(g.id) }, label = { Text(g.name) }) } } }
+        item {
+            Text("Inventory Management", color = Navy, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+            Text("Cylinder-wise stock • Location-wise balance • Movement history", color = Color.Gray, fontSize = 12.sp)
+        }
+        item {
+            Text("Select warehouse", color = Ink, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                godowns.forEach { g -> FilterChip(selected = activeGodownId == g.id, onClick = { onGodown(g.id) }, label = { Text(g.name) }) }
+            }
+        }
         items(CylinderTypes) { t ->
             val s = row(t)
-            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(14.dp)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(t, color = Navy, fontWeight = FontWeight.Bold)
-                    Text("Godown: ${s.godownFull} full / ${s.godownEmpty} empty", color = Ink)
-                    Text("Office: ${s.officeFull} full / ${s.officeEmpty} empty", color = Blue)
-                    Text("Van: ${s.vanFull} full / ${s.vanEmpty} empty • Defective: ${s.defective}", color = Color.Gray, fontSize = 12.sp)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column { Text("Godown", color = Color.Gray, fontSize = 11.sp); Text("${s.godownFull} full • ${s.godownEmpty} empty", color = Ink, fontWeight = FontWeight.SemiBold) }
+                        Column { Text("Office", color = Color.Gray, fontSize = 11.sp); Text("${s.officeFull} full • ${s.officeEmpty} empty", color = Blue, fontWeight = FontWeight.SemiBold) }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column { Text("Van", color = Color.Gray, fontSize = 11.sp); Text("${s.vanFull} full • ${s.vanEmpty} empty", color = Ink, fontWeight = FontWeight.SemiBold) }
+                        Column { Text("Defective", color = Color.Gray, fontSize = 11.sp); Text(s.defective.toString(), color = Red, fontWeight = FontWeight.SemiBold) }
+                    }
                 }
             }
         }
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(14.dp)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Record stock movement", color = Navy, fontWeight = FontWeight.Bold)
+                    Text("Stock entry", color = Navy, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     TypeSelector(type, { type = it })
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Plant inward", "Godown to Office", "Office to Godown", "Office to Van", "Van to Office", "Load van", "Return van", "Stock In Full", "Stock In Empty", "Stock In Defective", "Stock Out Full", "Stock Out Empty", "Stock Out Defective").forEach { a ->
-                            FilterChip(selected = action == a, onClick = { action = a }, label = { Text(a, fontSize = 10.sp) })
+                    Text("Action", color = Ink, fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("Stock In", "Stock Out", "Transfer").forEach { a ->
+                            FilterChip(selected = action == a, onClick = { action = a }, label = { Text(a) })
                         }
                     }
+                    Text("Cylinder condition", color = Ink, fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("Full", "Empty", "Defective").forEach { k ->
+                            FilterChip(selected = kind == k, onClick = { kind = k }, enabled = !(action == "Transfer" && k == "Defective"), label = { Text(k) })
+                        }
+                    }
+                    Text(if (action == "Transfer") "From location" else "Location", color = Ink, fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        locations.forEach { p -> FilterChip(selected = location == p, onClick = { location = p; if (target == p) target = locations.first { it != p } }, enabled = !(kind == "Defective" && p != "Godown"), label = { Text(p) }) }
+                    }
+                    if (action == "Transfer") {
+                        Text("To location", color = Ink, fontWeight = FontWeight.SemiBold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            locations.filter { it != location }.forEach { p -> FilterChip(selected = target == p, onClick = { target = p }, label = { Text(p) }) }
+                        }
+                    }
+                    Text("Available at $location: ${current(location, kind)}", color = Blue, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(qtyText, { qtyText = it.filter(Char::isDigit).take(5) }, label = { Text("Quantity") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Button(onClick = {
                         val q = qtyText.toIntOrNull() ?: 0
-                        val s = row(type)
-                        if (q <= 0) onNotice("Enter a valid quantity.")
-                        else when (action) {
-                            "Stock In Full" -> { setStock(type, "gf", s.godownFull + q); onMovement(action, type, q); onNotice("Stock In: filled cylinders added.") }
-                            "Stock In Empty" -> { setStock(type, "ge", s.godownEmpty + q); onMovement(action, type, q); onNotice("Stock In: empty cylinders added.") }
-                            "Stock In Defective" -> { setStock(type, "def", s.defective + q); onMovement(action, type, q); onNotice("Stock In: defective cylinders added.") }
-                            "Stock Out Full" -> if (s.godownFull >= q) { setStock(type, "gf", s.godownFull - q); onMovement(action, type, q); onNotice("Stock Out: filled cylinders removed.") } else onNotice("Godown filled stock is insufficient.")
-                            "Stock Out Empty" -> if (s.godownEmpty >= q) { setStock(type, "ge", s.godownEmpty - q); onMovement(action, type, q); onNotice("Stock Out: empty cylinders removed.") } else onNotice("Godown empty stock is insufficient.")
-                            "Stock Out Defective" -> if (s.defective >= q) { setStock(type, "def", s.defective - q); onMovement(action, type, q); onNotice("Stock Out: defective cylinders removed.") } else onNotice("Defective stock is insufficient.")
-                            "Godown to Office" -> if (s.godownFull >= q) { setStock(type, "gf", s.godownFull - q); setStock(type, "of", s.officeFull + q); onMovement(action, type, q); onNotice("Godown se Office transfer saved.") } else onNotice("Godown filled stock is insufficient.")
-                            "Office to Godown" -> if (s.officeFull >= q) { setStock(type, "of", s.officeFull - q); setStock(type, "gf", s.godownFull + q); onMovement(action, type, q); onNotice("Office se Godown transfer saved.") } else onNotice("Office filled stock is insufficient.")
-                            "Office to Van" -> if (s.officeFull >= q) { setStock(type, "of", s.officeFull - q); setStock(type, "vf", s.vanFull + q); onMovement(action, type, q); onNotice("Office se Van transfer saved.") } else onNotice("Office filled stock is insufficient.")
-                            "Van to Office" -> if (s.vanFull >= q) { setStock(type, "vf", s.vanFull - q); setStock(type, "of", s.officeFull + q); onMovement(action, type, q); onNotice("Van se Office transfer saved.") } else onNotice("Van filled stock is insufficient.")
-                            "Plant inward" -> if (s.godownEmpty >= q) {
-                                setStock(type, "ge", s.godownEmpty - q); setStock(type, "gf", s.godownFull + q)
-                                onMovement(action, type, q); onNotice("Plant inward saved.")
-                            } else onNotice("Not enough empty cylinders in godown.")
-                            "Load van" -> if (s.godownFull >= q) {
-                                setStock(type, "gf", s.godownFull - q); setStock(type, "vf", s.vanFull + q)
-                                onMovement(action, type, q); onNotice("Van loading saved.")
-                            } else onNotice("Not enough filled cylinders in godown.")
-                            else -> if (s.vanEmpty >= q) {
-                                setStock(type, "ve", s.vanEmpty - q); setStock(type, "ge", s.godownEmpty + q)
-                                onMovement(action, type, q); onNotice("Van empty return saved.")
-                            } else onNotice("Not enough empty cylinders in van.")
+                        val fromKey = key(location, kind)
+                        val toKey = key(target, kind)
+                        val available = current(location, kind)
+                        when {
+                            q <= 0 -> onNotice("Please enter a valid quantity.")
+                            action == "Stock In" -> {
+                                setStock(type, fromKey, available + q)
+                                onMovement("Stock In • $location • $kind", type, q)
+                                onNotice("$q $kind cylinders added to $location.")
+                            }
+                            available < q -> onNotice("Not enough $kind stock at $location.")
+                            action == "Stock Out" -> {
+                                setStock(type, fromKey, available - q)
+                                onMovement("Stock Out • $location • $kind", type, q)
+                                onNotice("$q $kind cylinders removed from $location.")
+                            }
+                            location == target -> onNotice("Choose a different destination.")
+                            else -> {
+                                setStock(type, fromKey, available - q)
+                                setStock(type, toKey, current(target, kind) + q)
+                                onMovement("Transfer • $location to $target • $kind", type, q)
+                                onNotice("Transfer saved. Company total stock remains unchanged.")
+                            }
                         }
-                    }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Blue)) { Text("Save stock movement") }
+                    }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Blue)) {
+                        Text("Save inventory entry")
+                    }
+                    Text("Stock In adds stock. Stock Out removes stock. Transfer only changes location; it does not reduce total company stock.", color = Color.Gray, fontSize = 11.sp)
                 }
             }
         }
         item {
-            Text("Recent stock movement history", color = Navy, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            if (movements.isEmpty()) Text("Abhi koi movement record nahi hai.", color = Color.Gray, fontSize = 12.sp)
+            Text("Recent inventory history", color = Navy, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            if (movements.isEmpty()) Text("No stock movement recorded yet.", color = Color.Gray, fontSize = 12.sp)
         }
-        items(movements.take(30), key = { "movement-" + it.id }) { m ->
+        items(movements.take(40), key = { "movement-" + it.id }) { m ->
             Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text("${m.action} • ${m.quantity} cylinders", color = Navy, fontWeight = FontWeight.Bold)
                     Text("${m.cylinderType} • ${m.godownName}", color = Ink, fontSize = 12.sp)
                     Text(java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(m.createdAt)), color = Color.Gray, fontSize = 11.sp)
